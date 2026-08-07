@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>depth scroll</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { font-family: ui-monospace, monospace; }
+  #space {
+    position: fixed; inset: 0;
+    perspective: 1100px;
+    transform-style: preserve-3d;
+  }
+  .plate {
+    position: absolute; left: 50%; top: 50%;
+    width: min(46vw, 340px);
+    aspect-ratio: 16 / 10;
+    background: #000;
+    border: 1px solid rgba(255,255,255,0.25);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; letter-spacing: 0.1em;
+    will-change: transform, opacity;
+  }
+</style>
+</head>
+<body>
+<div id="space"></div>
+<script>
+// depth scroll. cards on the z axis, ios feel:
+// direct follow while scrolling, momentum with friction on release,
+// a critically damped spring lands on the nearest card.
+const COUNT = 7;
+const GAP = 900;
+const MAXZ = (COUNT - 1) * GAP;
+
+const space = document.getElementById('space');
+const plates = [];
+for (let i = 0; i < COUNT; i++) {
+  const el = document.createElement('div');
+  el.className = 'plate';
+  el.textContent = String(i + 1).padStart(2, '0');
+  space.appendChild(el);
+  plates.push(el);
+}
+
+let camZ = 0, targetZ = 0, velZ = 0, lastInput = 0;
+
+const P = { gain: 2.2, camLerp: 0.2, friction: 0.99, spring: 0.004, tilt: 0.135,
+            edgeOver: 0.1, edgeSpring: 0.16, edgeDamp: 0.55 };
+
+function addInput(dy) {
+  const gain = P.gain / (1 + Math.abs(targetZ - camZ) / 700);
+  targetZ += dy * gain;
+  targetZ = Math.max(-GAP * P.edgeOver, Math.min(MAXZ + GAP * P.edgeOver, targetZ));
+  lastInput = performance.now();
+}
+
+addEventListener('wheel', e => { e.preventDefault(); addInput(e.deltaY); }, { passive: false });
+let touchY = null;
+addEventListener('touchstart', e => { touchY = e.touches[0].clientY; }, { passive: true });
+addEventListener('touchmove', e => {
+  if (touchY === null) return;
+  addInput((touchY - e.touches[0].clientY) * 3.0);
+  touchY = e.touches[0].clientY;
+}, { passive: true });
+addEventListener('touchend', () => { touchY = null; });
+
+function frame() {
+  const idle = performance.now() - lastInput;
+  const prev = camZ;
+
+  if (idle < 80) {
+    camZ += (targetZ - camZ) * P.camLerp;
+    velZ = camZ - prev;
+  } else {
+    velZ *= P.friction;
+    const slot = Math.max(0, Math.min(MAXZ, Math.round(camZ / GAP) * GAP));
+    const settle = 1 - Math.min(Math.abs(velZ) / 26, 1);
+    const k = P.spring * settle;
+    velZ += (slot - camZ) * k - velZ * 2 * Math.sqrt(k);
+    camZ += velZ;
+    if (camZ < 0)    { velZ += (0 - camZ) * P.edgeSpring - velZ * P.edgeDamp; camZ += velZ; }
+    if (camZ > MAXZ) { velZ += (MAXZ - camZ) * P.edgeSpring - velZ * P.edgeDamp; camZ += velZ; }
+    targetZ = camZ;
+  }
+
+  const tilt = Math.max(-4, Math.min(4, velZ * P.tilt));
+  plates.forEach((el, i) => {
+    const tz = camZ - i * GAP;
+    let op;
+    if (tz > 0) op = Math.max(0, 1 - tz / (GAP * 0.45));
+    else op = Math.max(0, 1 - (-tz) / (GAP * 2.6));
+    el.style.transform = `translate(-50%, -50%) translateZ(${tz}px) rotateX(${tilt}deg)`;
+    el.style.opacity = op.toFixed(3);
+    el.style.visibility = op <= 0 ? 'hidden' : 'visible';
+  });
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>inertia snap</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { font-family: ui-monospace, monospace; display: flex; align-items: center; }
+  #track {
+    position: relative; width: 100%; height: 140px;
+    cursor: grab; touch-action: none;
+  }
+  #track.grabbing { cursor: grabbing; }
+  .item {
+    position: absolute; top: 50%; left: 50%;
+    width: 96px; height: 120px;
+    background: #000;
+    border: 1px solid rgba(255,255,255,0.3);
+    color: #fff;
+    display: flex; align-items: flex-end; justify-content: flex-start;
+    padding: 8px; box-sizing: border-box;
+    font-size: 13px;
+    will-change: transform;
+  }
+  .item.active { border-color: #fff; }
+</style>
+</head>
+<body>
+<div id="track"></div>
+<script>
+// inertia snap. flick physics in one dimension:
+// direct follow while dragging, momentum with friction on release,
+// a critically damped spring lands on the nearest item.
+// velocity never jumps. that is the whole trick.
+const COUNT = 12;
+const STEP = 120;
+const MAX = (COUNT - 1) * STEP;
+
+const track = document.getElementById('track');
+const items = [];
+for (let i = 0; i < COUNT; i++) {
+  const el = document.createElement('div');
+  el.className = 'item';
+  el.textContent = String(i + 1).padStart(2, '0');
+  track.appendChild(el);
+  items.push(el);
+}
+
+let x = 0, target = 0, vel = 0, lastInput = 0;
+const P = { friction: 0.97, spring: 0.01, follow: 0.3, edgeOver: 0.4, edgeSpring: 0.16, edgeDamp: 0.55 };
+
+function addInput(dx) {
+  target += dx;
+  target = Math.max(-STEP * P.edgeOver, Math.min(MAX + STEP * P.edgeOver, target));
+  lastInput = performance.now();
+}
+
+let dragX = null;
+track.addEventListener('pointerdown', e => { dragX = e.clientX; track.classList.add('grabbing'); });
+addEventListener('pointermove', e => {
+  if (dragX === null) return;
+  addInput(dragX - e.clientX);
+  dragX = e.clientX;
+});
+addEventListener('pointerup', () => { dragX = null; track.classList.remove('grabbing'); });
+addEventListener('wheel', e => { e.preventDefault(); addInput(e.deltaY || e.deltaX); }, { passive: false });
+
+function frame() {
+  const idle = performance.now() - lastInput;
+  const prev = x;
+
+  if (idle < 80) {
+    x += (target - x) * P.follow;
+    vel = x - prev;
+  } else {
+    vel *= P.friction;
+    const slot = Math.max(0, Math.min(MAX, Math.round(x / STEP) * STEP));
+    const settle = 1 - Math.min(Math.abs(vel) / 20, 1);
+    const k = P.spring * settle;
+    vel += (slot - x) * k - vel * 2 * Math.sqrt(k);
+    x += vel;
+    if (x < 0)   { vel += (0 - x) * P.edgeSpring - vel * P.edgeDamp; x += vel; }
+    if (x > MAX) { vel += (MAX - x) * P.edgeSpring - vel * P.edgeDamp; x += vel; }
+    target = x;
+  }
+
+  const active = Math.round(x / STEP);
+  items.forEach((el, i) => {
+    const ix = i * STEP - x;
+    // subtle lean out of the velocity, like the stack it came from
+    const lean = Math.max(-8, Math.min(8, vel * 0.5));
+    el.style.transform = `translate(calc(-50% + ${ix}px), -50%) rotate(${lean * 0.15}deg)`;
+    el.classList.toggle('active', i === active);
+  });
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
