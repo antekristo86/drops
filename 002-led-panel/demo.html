@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>led panel</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// led panel. off-state of a real wall: uniform dim grid, slow shimmer,
+// leds wake up near the cursor.
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl', { antialias: false });
+
+const vsSrc = `
+attribute vec2 p;
+void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
+
+const fsSrc = `
+precision highp float;
+uniform vec2 uRes;
+uniform float uTime;
+uniform float uLed;
+uniform vec2 uMouse;
+
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+void main() {
+  vec2 cell = floor(gl_FragCoord.xy / uLed);
+  vec2 cuv = fract(gl_FragCoord.xy / uLed) - 0.5;
+  float dotMask = smoothstep(0.42, 0.18, length(cuv));
+  float h = hash(cell);
+  float shimmer = 0.82 + 0.18 * sin(uTime * (0.3 + h * 0.7) + h * 6.2831);
+  float led = dotMask * (0.015 + 0.007 * h) * shimmer;
+
+  // cursor wakes the wall
+  vec2 cellCenter = (cell + 0.5) * uLed;
+  float d = distance(cellCenter, uMouse) / uRes.y;
+  float wake = exp(-d * d * 26.0);
+  led += dotMask * wake * (0.25 + 0.5 * h) * shimmer;
+
+  vec3 col = led * vec3(0.95 + 0.1 * hash(cell + 1.7), 1.0, 0.95 + 0.1 * hash(cell + 3.1));
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s);
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, vsSrc));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fsSrc));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(loc);
+gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+const uRes = gl.getUniformLocation(prog, 'uRes');
+const uTime = gl.getUniformLocation(prog, 'uTime');
+const uLed = gl.getUniformLocation(prog, 'uLed');
+const uMouse = gl.getUniformLocation(prog, 'uMouse');
+
+let dpr = 1;
+let mx = -9999, my = -9999;
+let tx = -9999, ty = -9999;
+
+addEventListener('pointermove', e => {
+  tx = e.clientX * dpr;
+  ty = (innerHeight - e.clientY) * dpr;
+});
+addEventListener('pointerleave', () => { tx = -9999; ty = -9999; });
+
+function resize() {
+  dpr = Math.min(devicePixelRatio, 2);
+  canvas.width = innerWidth * dpr;
+  canvas.height = innerHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+addEventListener('resize', resize);
+resize();
+
+function frame(t) {
+  mx += (tx - mx) * 0.12;
+  my += (ty - my) * 0.12;
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform1f(uTime, t * 0.001);
+  gl.uniform1f(uLed, 5 * dpr);
+  gl.uniform2f(uMouse, mx, my);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

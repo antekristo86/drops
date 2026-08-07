@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ante</title>
+<meta name="description" content="ante. Building visions with visionaries." />
+<link rel="icon" type="image/svg+xml" href="./ante.svg" />
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl', { antialias: false });
+
+// --- wordmark texture: render the SVG paths onto an offscreen canvas ---
+const TEX = 2048;
+const tex2d = document.createElement('canvas');
+tex2d.width = TEX; tex2d.height = TEX;
+const ctx = tex2d.getContext('2d');
+
+const paths = [
+"M249.482 69.2285V317.095H203.55L197.748 279.334C189.045 291.599 177.925 301.442 164.387 308.865C150.849 316.288 135.055 320 117.005 320C94.4421 320 74.2966 314.998 56.5685 304.992C38.8405 294.665 24.9804 279.98 14.9882 260.938C4.99608 241.573 0 218.981 0 193.162C0 167.988 4.99608 145.88 14.9882 126.838C25.3027 107.474 39.324 92.6273 57.052 82.2996C74.7801 71.649 94.7644 66.3238 117.005 66.3238C135.378 66.3238 151.333 69.8739 164.871 76.9743C178.408 83.7519 189.368 93.2728 197.748 105.537L204.034 69.2285H249.482ZM125.708 275.946C147.304 275.946 164.71 268.361 177.925 253.192C191.14 238.023 197.748 218.336 197.748 194.13C197.748 169.602 191.14 149.592 177.925 134.1C164.71 118.608 147.304 110.862 125.708 110.862C104.112 110.862 86.7062 118.608 73.4908 134.1C60.2753 149.269 53.6676 168.956 53.6676 193.162C53.6676 217.69 60.2753 237.7 73.4908 253.192C86.7062 268.361 104.112 275.946 125.708 275.946Z",
+"M421.715 66.3238C451.047 66.3238 474.899 75.3606 493.272 93.4342C511.967 111.508 521.314 140.555 521.314 180.575V317.095H468.614V183.48C468.614 159.919 463.617 142.007 453.625 129.743C443.633 117.479 428.967 111.346 409.627 111.346C388.999 111.346 372.721 118.608 360.795 133.132C349.191 147.332 343.389 167.02 343.389 192.194V317.095H291.172V69.2285H336.62L342.422 101.664C361.117 78.1039 387.548 66.3238 421.715 66.3238Z",
+"M568.78 115.219H525.749V69.2285H568.78V0H621.48V69.2285H680.95V115.219H621.48V244.478C621.48 254.16 623.414 261.099 627.282 265.295C631.15 269.168 637.758 271.104 647.105 271.104H686.752V317.095H636.469C612.939 317.095 595.694 311.609 584.735 300.635C574.098 289.662 568.78 272.718 568.78 249.803V115.219Z",
+"M693.287 193.646C693.287 168.149 698.283 145.88 708.275 126.838C718.59 107.474 732.772 92.6273 750.823 82.2996C769.195 71.649 790.147 66.3238 813.676 66.3238C837.529 66.3238 858.48 71.1649 876.53 80.8472C894.903 90.5295 909.247 104.246 919.561 121.997C930.198 139.748 935.678 160.565 936 184.448C936 190.903 935.516 197.519 934.549 204.297H747.922V207.201C749.211 228.825 755.98 245.93 768.228 258.517C780.477 271.104 796.754 277.398 817.061 277.398C833.177 277.398 846.715 273.686 857.674 266.263C868.633 258.517 875.886 247.706 879.431 233.828H931.648C927.136 259.002 914.887 279.657 894.903 295.794C875.241 311.931 850.583 320 820.929 320C795.143 320 772.58 314.836 753.24 304.508C734.223 293.858 719.396 279.012 708.759 259.97C698.444 240.928 693.287 218.82 693.287 193.646ZM882.816 166.051C880.56 147.978 873.307 133.938 861.059 123.933C849.133 113.606 833.983 108.442 815.61 108.442C798.527 108.442 783.7 113.767 771.129 124.418C758.881 134.745 751.79 148.623 749.856 166.051H882.816Z"
+];
+
+function drawWordmark() {
+  ctx.clearRect(0, 0, TEX, TEX);
+  ctx.fillStyle = '#fff';
+  // logo viewBox is 370x128 — center it, ~55% of texture width
+  const w = TEX * 0.55;
+  const s = w / 936;
+  const h = 320 * s;
+  ctx.save();
+  ctx.translate((TEX - w) / 2, (TEX - h) / 2);
+  ctx.scale(s, s);
+  for (const d of paths) ctx.fill(new Path2D(d));
+  ctx.restore();
+}
+drawWordmark();
+
+// --- GL setup ---
+const vsSrc = `
+attribute vec2 p;
+varying vec2 vUv;
+void main() { vUv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }`;
+
+const fsSrc = `
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uTime;
+const int N = 24;
+uniform vec3 uTrail[N];   // xy = pos (uv), z = age 0..1
+uniform vec2 uTrailV[N];  // velocity
+
+// small noise for idle breathing
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1,0)), u.x),
+             mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), u.x), u.y);
+}
+
+void main() {
+  vec2 uv = vUv;
+  float aspect = uRes.x / uRes.y;
+  vec2 auv = vec2(uv.x * aspect, uv.y);
+
+  // idle breathing: slow, subtle
+  vec2 breathe = vec2(
+    noise(auv * 3.0 + uTime * 0.08),
+    noise(auv * 3.0 - uTime * 0.06 + 7.0)
+  ) - 0.5;
+  // cursor trail: each point pushes pixels along its velocity, fading with age
+  vec2 push = vec2(0.0);
+  for (int i = 0; i < N; i++) {
+    vec3 t = uTrail[i];
+    if (t.z <= 0.0) continue;
+    vec2 tp = vec2(t.x * aspect, t.y);
+    float d = distance(auv, tp);
+    float influence = exp(-d * d * 90.0) * t.z;
+    push += uTrailV[i] * influence * 0.55;
+  }
+
+  vec2 offset = breathe * 0.0035 + push;
+  vec2 suv = uv - offset;
+
+  // square texture mapped to screen center, cover-style
+  vec2 tuv;
+  if (aspect > 1.0) {
+    tuv = vec2(suv.x, (suv.y - 0.5) / aspect + 0.5);
+  } else {
+    tuv = vec2((suv.x - 0.5) * aspect + 0.5, suv.y);
+  }
+  tuv.y = 1.0 - tuv.y;
+
+  float a = texture2D(uTex, tuv).a;
+
+  // chromatic split only under motion, never at rest. a hint, not a rainbow
+  float shift = min(length(push) * 0.25, 0.004);
+  float ar = texture2D(uTex, tuv + vec2(shift, 0.0)).a;
+  float ab = texture2D(uTex, tuv - vec2(shift, 0.0)).a;
+
+  vec3 col = vec3(ar, a, ab);
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s);
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, vsSrc));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fsSrc));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(loc);
+gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+const tex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, tex);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, tex2d);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+const uRes = gl.getUniformLocation(prog, 'uRes');
+const uTime = gl.getUniformLocation(prog, 'uTime');
+const uTrail = gl.getUniformLocation(prog, 'uTrail');
+const uTrailV = gl.getUniformLocation(prog, 'uTrailV');
+
+// --- cursor trail state ---
+const N = 24;
+const trail = new Float32Array(N * 3);
+const trailV = new Float32Array(N * 2);
+let head = 0;
+let last = null;
+
+function pushPoint(x, y) {
+  const nx = x / innerWidth, ny = 1 - y / innerHeight;
+  let vx = 0, vy = 0;
+  if (last) {
+    vx = (nx - last[0]);
+    vy = (ny - last[1]);
+    const len = Math.hypot(vx, vy);
+    const cap = 0.02;
+    if (len > cap) { vx = vx / len * cap; vy = vy / len * cap; }
+  }
+  last = [nx, ny];
+  trail[head * 3] = nx; trail[head * 3 + 1] = ny; trail[head * 3 + 2] = 1.0;
+  trailV[head * 2] = vx * (innerWidth / innerHeight); trailV[head * 2 + 1] = vy;
+  head = (head + 1) % N;
+}
+
+addEventListener('pointermove', e => pushPoint(e.clientX, e.clientY));
+addEventListener('pointerdown', e => pushPoint(e.clientX, e.clientY));
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio, 2);
+  canvas.width = innerWidth * dpr;
+  canvas.height = innerHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+addEventListener('resize', resize);
+resize();
+
+function frame(t) {
+  // decay ages
+  for (let i = 0; i < N; i++) trail[i * 3 + 2] = Math.max(0, trail[i * 3 + 2] - 0.016);
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform1f(uTime, t * 0.001);
+  gl.uniform3fv(uTrail, trail);
+  gl.uniform2fv(uTrailV, trailV);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
