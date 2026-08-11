@@ -85,18 +85,35 @@ void main() {
   vec3 col = texture2D(uTex, vec2(vUv.x + uPan.x, 1.0 - vUv.y + uPan.y)).rgb;
 
   if (d < 0.0) {
-    // inside the lens: refract. strength peaks at the rim, calm center
-    float depth = clamp(-d / uR, 0.0, 1.0);     // 1 center, 0 rim
+    // the body is a real lens. a dome sits over the outline: flat in the
+    // middle, steep at the rim. its slope bends the ray by snell, the
+    // thickness decides how far that bent ray travels before it exits
+    float depth = clamp(-d / uR, 0.0, 1.0);     // 1 centre, 0 rim
     vec2 n = g / gm;
-    float bend = pow(1.0 - depth, 3.0) * smoothstep(0.0, 0.045, depth); // rim-heavy, crisp wall
-    float mag = 0.09 * uR;                       // center magnification
+    float bend = pow(1.0 - depth, 3.0) * smoothstep(0.0, 0.045, depth);
 
-    vec2 base = vUv - (q - c) / vec2(aspect, 1.0) * mag * depth;
-    vec2 shift = n / vec2(aspect, 1.0) * bend * uR * 0.26;
+    float t01 = 1.0 - depth;                     // 0 centre, 1 rim
+    float dome = sqrt(max(0.0, 1.0 - t01 * t01));       // thickness profile
+    vec3 N = normalize(vec3(n * t01 * 2.6, dome + 0.06));
+    vec3 I = vec3(0.0, 0.0, -1.0);
 
-    float rr = texture2D(uTex, vec2(base.x - shift.x * 1.12 + uPan.x, 1.0 - (base.y - shift.y * 1.12) + uPan.y)).r;
-    float gg = texture2D(uTex, vec2(base.x - shift.x + uPan.x,        1.0 - (base.y - shift.y) + uPan.y)).g;
-    float bb = texture2D(uTex, vec2(base.x - shift.x * 0.88 + uPan.x, 1.0 - (base.y - shift.y * 0.88) + uPan.y)).b;
+    float thick = 0.42 * uR * dome;
+    // three indices: glass splits the spectrum on its own
+    vec3 Rr = refract(I, N, 0.652);
+    vec3 Rg = refract(I, N, 0.662);
+    vec3 Rb = refract(I, N, 0.674);
+
+    // thickness also magnifies what sits behind the middle
+    vec2 mid = vUv - (q - c) / vec2(aspect, 1.0) * 0.34 * dome;
+    vec2 pan = vec2(uPan.x, -uPan.y);
+
+    vec2 ur = mid + Rr.xy / max(0.3, abs(Rr.z)) * thick / vec2(aspect, 1.0);
+    vec2 ug = mid + Rg.xy / max(0.3, abs(Rg.z)) * thick / vec2(aspect, 1.0);
+    vec2 ub = mid + Rb.xy / max(0.3, abs(Rb.z)) * thick / vec2(aspect, 1.0);
+
+    float rr = texture2D(uTex, vec2(ur.x + uPan.x, 1.0 - ur.y + uPan.y)).r;
+    float gg = texture2D(uTex, vec2(ug.x + uPan.x, 1.0 - ug.y + uPan.y)).g;
+    float bb = texture2D(uTex, vec2(ub.x + uPan.x, 1.0 - ub.y + uPan.y)).b;
     col = vec3(rr, gg, bb);
 
     // slight glass tint toward the rim
