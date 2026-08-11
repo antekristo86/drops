@@ -132,8 +132,10 @@ void main() {
   vec3 nrm = normalize(vec3(g / gm, 0.5));
   float facing = clamp(dot(nrm, L), 0.0, 1.0);
 
-  float band  = smoothstep(0.0035, 0.0, abs(d));         // the lit edge
-  float wall  = smoothstep(0.016, 0.0, abs(d));          // thickness behind it
+  // widths in pixels, not uv. keeps the edge a hairline at any resolution
+  float px = 1.0 / uRes.y;
+  float band  = smoothstep(px * 2.0, 0.0, abs(d));       // the lit edge
+  float wall  = smoothstep(px * 16.0, 0.0, abs(d));      // thickness behind it
   float lit   = pow(facing, 4.0);                        // only the turned part
 
   col += vec3(1.0, 0.99, 0.96) * band * lit * 0.3;
