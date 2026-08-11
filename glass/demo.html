@@ -376,12 +376,16 @@ void main() {
   float wlum = max(max(wsamp.r, wsamp.g), wsamp.b);
   vec3 wcol = wlum > 1e-4 ? wsamp / wlum : vec3(1.0);
   float sideD = wyy - syc;
-  float prox = exp(-sideD * sideD * 3.2) * smoothstep(1.35, 0.2, abs(wx));
+  // how much light is actually here, not just how close the band is. a
+  // constant glow gated only by distance keeps burning after the lobes
+  // have moved on, and the whole rim reads hot
+  float prox = exp(-sideD * sideD * 3.2) * smoothstep(1.35, 0.2, abs(wx))
+             * clamp(wlum * 0.55, 0.0, 1.0);
   vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), wcol, clamp(prox * uRimTint, 0.0, 1.0));
 
   // and the wall itself glows a little where the beam meets it
-  col += wcol * band * prox * uRimTint * 0.5;
-  col += wcol * wall * prox * uRimTint * 0.14;
+  col += wcol * band * prox * uRimTint * 0.24;
+  col += wcol * wall * prox * uRimTint * 0.06;
 
   col += rimCol * band * lit * uLightPower * 0.35;
   col += rimCol * band * tir * uLightPower * 0.62;
