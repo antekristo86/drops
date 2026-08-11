@@ -49,22 +49,14 @@ varying vec2 vUv;
 uniform sampler2D uTex;
 uniform vec2 uRes;
 uniform float uTime;
-uniform vec2  uOff;      // lens displacement from the push
-uniform vec2  uSquash;   // stretch along / across the motion
-uniform float uWob;      // jelly energy
+uniform float uScale;    // grows on hover
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uVel;       // lens velocity, squashes the bubble
 
 // a rectangle with rounded corners. exact sdf
 float lensField(vec2 q, vec2 c, float r) {
-  // the push displaces the body, motion squashes it, and a ripple
-  // runs around the outline while the jelly still has energy
-  q -= uOff;
-  float ang = atan(q.y - c.y, q.x - c.x);
-  float ripple = 1.0 + uWob * (sin(ang * 3.0 - uTime * 11.0) * 0.09
-                             + sin(ang * 5.0 + uTime * 7.0) * 0.05);
-  vec2 halfSize = vec2(r * 2.1, r * 0.72) * uSquash * ripple;
+  vec2 halfSize = vec2(r * 2.1, r * 0.72) * uScale;
   float rad = halfSize.y;   // always half the height: clean semicircular ends
   vec2 d2 = abs(q - c) - (halfSize - rad);
   return length(max(d2, vec2(0.0))) + min(max(d2.x, d2.y), 0.0) - rad;
@@ -179,34 +171,22 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 const uTex = gl.getUniformLocation(prog, 'uTex');
 const uRes = gl.getUniformLocation(prog, 'uRes');
 const uTime = gl.getUniformLocation(prog, 'uTime');
-const uOff = gl.getUniformLocation(prog, 'uOff');
-const uSquash = gl.getUniformLocation(prog, 'uSquash');
-const uWob = gl.getUniformLocation(prog, 'uWob');
+const uScale = gl.getUniformLocation(prog, 'uScale');
 const uLens = gl.getUniformLocation(prog, 'uLens');
 const uRU = gl.getUniformLocation(prog, 'uR');
 const uVel = gl.getUniformLocation(prog, 'uVel');
 
 let lx = 0.5, ly = 0.5, vx = 0, vy = 0;
 
-// the cursor pushes the body. it drags, squashes along the motion and
-// wobbles back. underdamped on purpose, so the material reads as jelly
-let ox = 0, oy = 0, ovx = 0, ovy = 0;
-let wob = 0, sqx = 1, sqy = 1;
-let pmx = null, pmy = null;
+// hover: the body grows a little, springs back when you leave
+let scale = 1, scaleT = 1, scaleV = 0;
 
 addEventListener('pointermove', e => {
   const mx = e.clientX / innerWidth, my = 1 - e.clientY / innerHeight;
-  if (pmx !== null) {
-    const dx = mx - pmx, dy = my - pmy;
-    const speed = Math.hypot(dx, dy);
-    // only push when the cursor is near the body
-    const near = Math.exp(-(Math.pow((mx - lx) / 0.28, 2) + Math.pow((my - ly) / 0.16, 2)));
-    ovx += dx * 2.2 * near;
-    ovy += dy * 2.2 * near;
-    wob = Math.min(1, wob + speed * 9 * near);
-  }
-  pmx = mx; pmy = my;
+  const inside = Math.abs(mx - lx) < 0.19 && Math.abs(my - ly) < 0.11;
+  scaleT = inside ? 1.12 : 1;
 });
+addEventListener('pointerleave', () => { scaleT = 1; });
 
 function resize() {
   dpr = Math.min(devicePixelRatio, 2);
@@ -227,21 +207,9 @@ function frame(t) {
   const now = performance.now();
   last = now;
 
-  // underdamped spring back to rest: the wobble
-  const k = 0.055, damp = 0.9;
-  ovx += (0 - ox) * k; ovy += (0 - oy) * k;
-  ovx *= damp; ovy *= damp;
-  ox += ovx; oy += ovy;
-  wob *= 0.94;
-
-  // squash follows the drag: longer along it, thinner across
-  const stretch = Math.hypot(ovx, ovy) * 5.5;
-  sqx += ((1 + stretch * Math.abs(ovx) / (Math.hypot(ovx, ovy) + 1e-5) - stretch * 0.25) - sqx) * 0.25;
-  sqy += ((1 + stretch * Math.abs(ovy) / (Math.hypot(ovx, ovy) + 1e-5) - stretch * 0.25) - sqy) * 0.25;
-
-  gl.uniform2f(uOff, ox, oy);
-  gl.uniform2f(uSquash, sqx, sqy);
-  gl.uniform1f(uWob, wob);
+  scaleV += (scaleT - scale) * 0.14 - scaleV * 0.35;
+  scale += scaleV;
+  gl.uniform1f(uScale, scale);
   gl.uniform1i(uTex, 0);
   gl.uniform2f(uRes, canvas.width, canvas.height);
   gl.uniform1f(uTime, t * 0.001);
