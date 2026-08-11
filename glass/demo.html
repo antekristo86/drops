@@ -174,63 +174,50 @@ void main() {
   vec3 col = texture2D(uTex, vec2(vUv.x + uPan.x, 1.0 - vUv.y + uPan.y)).rgb;
 
   if (d < 0.0) {
-    // the body is a real lens. a dome sits over the outline: flat in the
-    // middle, steep at the rim. its slope bends the ray by snell, the
-    // thickness decides how far that bent ray travels before it exits
-    float depth = clamp(-d / uR, 0.0, 1.0);     // 1 centre, 0 rim
-    vec2 n = g / gm;
-    float bend = pow(1.0 - depth, 3.0) * smoothstep(0.0, 0.045, depth);
+    // ---- the lens ----
+    // one idea: push the background outward, nothing at the centre,
+    // hardest at the rim, plus the magnification a thick body gives.
+    // all of it in body space, so it stays smooth everywhere. distance
+    // field gradients and height normals both tear on straight edges
+    vec2 hs = vec2(uR * uShapeW, uR * uShapeH) * uScale;
+    vec2 u = (q - c) / hs;
+    float r = min(pow(pow(abs(u.x), 6.0) + pow(abs(u.y), 6.0), 1.0 / 6.0), 1.0);
+    vec2 dir = length(u) > 1e-5 ? normalize(u) : vec2(0.0);
 
-    // normal from the height field. depth scales the dome, so a deeper
-    // body tilts its surface more and bends harder
-    float eh = 0.0025;
-    float dome = domeH(q, c, uR) * uDepth;
-    vec2 hg = vec2(
-      domeH(q + vec2(eh, 0.0), c, uR) - domeH(q - vec2(eh, 0.0), c, uR),
-      domeH(q + vec2(0.0, eh), c, uR) - domeH(q - vec2(0.0, eh), c, uR)
-    ) / (2.0 * eh) * uDepth;
-    vec3 N = normalize(vec3(-hg * 0.14, 1.0));
-    vec3 I = vec3(0.0, 0.0, -1.0);
+    float push = pow(r, uSplay) * uRefraction * 0.42;
+    float mag  = (1.0 - r * r) * uDepth * 0.30;
 
-    float thick = uRefraction * uR * dome;
-    // three indices: glass splits the spectrum on its own
-    vec3 Rr = refract(I, N, 0.662 - uDispersion);
-    vec3 Rg = refract(I, N, 0.662);
-    vec3 Rb = refract(I, N, 0.662 + uDispersion * 1.2);
+    vec2 base = vUv - (q - c) / vec2(aspect, 1.0) * mag;
+    vec2 off  = dir * push * hs / vec2(aspect, 1.0);
 
-    // thickness also magnifies what sits behind the middle
-    vec2 mid = vUv - (q - c) / vec2(aspect, 1.0) * 0.45 * dome;
-    vec2 pan = vec2(uPan.x, -uPan.y);
+    // dispersion: each channel pushed a shade differently
+    float sR = 1.0 - uDispersion * 7.0;
+    float sB = 1.0 + uDispersion * 7.0;
 
-    vec2 ur = mid + Rr.xy / max(0.3, abs(Rr.z)) * thick / vec2(aspect, 1.0);
-    vec2 ug = mid + Rg.xy / max(0.3, abs(Rg.z)) * thick / vec2(aspect, 1.0);
-    vec2 ub = mid + Rb.xy / max(0.3, abs(Rb.z)) * thick / vec2(aspect, 1.0);
-
-    // frost scatters the ray: a few offset taps averaged together
-    float fr = uFrost * 0.06;
+    // frost scatters the ray across a few taps
+    float fr = uFrost * 0.05;
     vec3 acc3 = vec3(0.0);
-    for (int s = 0; s < 5; s++) {
-      float a2 = float(s) * 1.2566;
-      vec2 j = vec2(cos(a2), sin(a2)) * fr * (0.35 + 0.65 * float(s) / 4.0);
+    for (int s2 = 0; s2 < 5; s2++) {
+      float a2 = float(s2) * 1.2566;
+      vec2 j = vec2(cos(a2), sin(a2)) * fr * (0.35 + 0.65 * float(s2) / 4.0);
       acc3 += vec3(
-        texture2D(uTex, vec2(ur.x + j.x + uPan.x, 1.0 - ur.y + j.y + uPan.y)).r,
-        texture2D(uTex, vec2(ug.x + j.x + uPan.x, 1.0 - ug.y + j.y + uPan.y)).g,
-        texture2D(uTex, vec2(ub.x + j.x + uPan.x, 1.0 - ub.y + j.y + uPan.y)).b);
+        texture2D(uTex, vec2(base.x + off.x * sR + j.x + uPan.x, 1.0 - (base.y + off.y * sR + j.y) + uPan.y)).r,
+        texture2D(uTex, vec2(base.x + off.x      + j.x + uPan.x, 1.0 - (base.y + off.y      + j.y) + uPan.y)).g,
+        texture2D(uTex, vec2(base.x + off.x * sB + j.x + uPan.x, 1.0 - (base.y + off.y * sB + j.y) + uPan.y)).b);
     }
     col = acc3 / 5.0;
 
+    float depth = clamp(1.0 - r, 0.0, 1.0);
+    float bend = r * r;
+
     // the wave sits inside the body, so the refracted ray finds it and
     // it warps and splits along with everything else
-    float hwW = uR * uShapeW * uScale;
-    float hhW = uR * uShapeH * uScale;
     // it floats mid body, so it only takes a fraction of the full bend.
     // the whole path would fold it back on itself at the caps
     // the beam sits behind the glass, so the same bend carries it. push
     // this too far and it tears where the displacement jumps, so the
     // amount is a dial
-    vec2 bendUV = Rg.xy / max(0.3, abs(Rg.z)) * thick;
-    vec2 wpos = vec2((q.x - c.x) / hwW, (q.y - c.y) / hhW);
-    wpos += vec2(bendUV.x / hwW, bendUV.y / hhW) * uWaveBend;
+    vec2 wpos = u + dir * push * uWaveBend * 2.2;
     vec3 wv = waveField(wpos, uTime);
 
     // slight glass tint toward the rim
