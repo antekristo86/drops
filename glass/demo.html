@@ -141,41 +141,46 @@ float waveSpine(float x, float t) {
 
 // not one curve with a spectrum painted across it. that is a gradient
 // wearing a wave costume, and it never behaves like light.
-// this is a stack of strands, one per wavelength, each running the same
-// wave at its own offset and phase. where they agree they pile up into
-// white, where they drift apart the spectrum opens. the white core and
-// the colour order are consequences, not paint
+// seven strands, one per colour, each its own wave: own phase, own speed,
+// own amplitude. they cross instead of running in formation. white is
+// where several cross at once, colour is where one runs alone.
+// each strand is a spindle, fat where it runs through the middle and gone
+// at the caps, so the band as a whole reads as a lens, not a stripe
 vec3 waveField(vec2 w, float t) {
-  float ends = smoothstep(1.32, 0.25, abs(w.x));
+  float ends = smoothstep(1.34, 0.30, abs(w.x));
   if (ends <= 0.001) return vec3(0.0);
 
   vec3 acc = vec3(0.0);
-  for (int i = 0; i < 9; i++) {
-    float k = float(i) / 8.0;                  // 0 red, 1 blue
-    float s = k - 0.5;
+  for (int i = 0; i < 7; i++) {
+    float fi = float(i);
+    float k  = fi / 6.0;                       // 0 red, 1 blue
 
-    // each strand lags the next a touch, and breathes on its own clock.
-    // that is what makes the fan open and close instead of marching
-    float ph  = s * 0.55 + 0.10 * sin(t * 0.23 + k * 4.1);
-    float sep = uWaveReach * uWaveGirth * 1.50;
-    float amp = 1.0 + s * 0.12;
-    float base = waveSpine(w.x * 2.3 + ph, t) * amp - s * sep;
+    float ph  = fi * 1.73;
+    float sp  = uWaveSpeed * (0.70 + 0.10 * fi);
+    float amp = uWaveAmp   * (0.60 + 0.40 * sin(fi * 2.4 + 1.1));
+    float fr  = uWaveFreq  * (0.80 + 0.10 * fi);
+    float y   = amp * (sin(w.x * 2.3 * fr - t * sp + ph)
+                     + 0.18 * sin(w.x * 4.6 * fr + t * sp * 0.6 + ph))
+              + (k - 0.5) * uWaveReach * uWaveGirth;
 
-    // blue runs wider than red. tight edge on top, soft spill underneath,
-    // without a separate bloom term faking it
-    float g = uWaveGirth * (0.30 + 0.35 * k);
-    float dy = (w.y - base) / g;
+    // the strand is a ribbon in space, not a line on a plane. it twists
+    // along its run like a flag, turning face-on and edge-on, and it swings
+    // in depth, so it swells coming forward and thins going back. the
+    // spindle falls out of that. it is not a shape anyone drew
+    float tw   = sin(w.x * 1.5 * fr - t * sp * 0.7 + ph * 0.6);
+    float face = 0.16 + 0.84 * abs(tw);            // 0 edge-on, 1 face-on
+    float z    = sin(w.x * 1.1 - t * sp * 0.45 + ph);
+    float per  = 1.0 / (1.0 + z * 0.42);           // nearer is bigger
+    float run  = smoothstep(1.34, 0.55, abs(w.x)); // the ribbon has ends
 
-    vec3 tone = mix(vec3(1.0, 0.99, 0.97), spectral(k), uWaveSat * 12.0);
-    acc += tone * exp(-dy * dy);
+    float g  = uWaveGirth * face * per * (0.40 + 0.80 * run);
+    float dy = (w.y - y * per) / max(g, 1e-4);
+
+    vec3 tone = mix(vec3(1.0, 0.99, 0.97), spectral(k), min(uWaveSat * 12.0, 1.0));
+    acc += tone * exp(-dy * dy) * per * run;
   }
-  acc *= 0.30;
 
-  // the filament: where the strands cross, one hot white line
-  float dc = (w.y - waveSpine(w.x * 2.3, t)) / max(uWaveCore, 1e-4);
-  acc += vec3(1.0, 0.99, 0.97) * exp(-dc * dc) * 0.35;
-
-  return acc * ends;
+  return acc * 0.42 * ends;
 }
 
 void main() {
@@ -298,10 +303,19 @@ void main() {
       float reach = exp(-travel * travel * 1.6 / (sz * sz));
       float ends  = smoothstep(1.25, 0.15, abs(xn));
 
-      // the beam drives the brightness, the wavelength drives the colour,
-      // off the same spectrum the wave uses. each wavelength focuses at its
-      // own depth, and that separation is the only reason a caustic has colour
-      float srcY = waveSpine(xn * 2.3, uTime);
+      // what falls through is the light that is actually up there, so read
+      // the whole band at this x, not one curve through the middle. the
+      // strands each carry their own colour and the pool inherits the mix
+      vec3 src = vec3(0.0);
+      for (int j = 0; j < 5; j++) {
+        src += waveField(vec2(xn * 0.95, (float(j) - 2.0) * 0.32), uTime);
+      }
+      src *= 0.34;
+      float lum = max(max(src.r, src.g), src.b);
+
+      // each wavelength focuses at its own depth, so the pool keeps the
+      // band's colour through the middle and fringes into the spectrum
+      // where the focal depths pull apart
       vec3 acc = vec3(0.0);
       float wsum = 0.0;
       for (int i = 0; i < 7; i++) {
@@ -309,9 +323,7 @@ void main() {
         float focus = (k - 0.5) * uDispersion * 46.0;
         float dy = travel - 0.22 - focus;
         float prof = exp(-dy * dy / (defocus * defocus));
-        vec3 bs = waveField(vec2(xn * 0.95 + focus * 0.4, srcY), uTime);
-        float lum = max(max(bs.r, bs.g), bs.b);
-        acc  += spectral(k) * lum * prof;
+        acc  += mix(src, spectral(k) * lum, 0.5) * prof;
         wsum += prof;
       }
       acc /= max(wsum, 0.001);
@@ -406,8 +418,8 @@ const DEFAULTS = {
   lightAngle: 2.0, lightPower: 0.8, refraction: 0.85, depth: 1.0,
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.90, smokePos: 0.00,
-  waveAmp: 0.28, waveGirth: 0.15, waveInt: 1.0, waveSat: 0.08, waveBend: 0.45,
-  shadow: 0.14, rimTint: 0.45, waveFreq: 0.9, waveSpeed: 0.45, waveCore: 0.060, waveReach: 2.2, caustic: 0.5, causticSize: 1.0, causticGap: 0.0
+  waveAmp: 0.42, waveGirth: 0.16, waveInt: 1.0, waveSat: 0.08, waveBend: 0.45,
+  shadow: 0.14, rimTint: 0.45, waveFreq: 1.30, waveSpeed: 0.45, waveCore: 0.060, waveReach: 2.0, caustic: 0.5, causticSize: 1.0, causticGap: 0.0
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
