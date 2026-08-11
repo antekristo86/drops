@@ -234,7 +234,9 @@ void main() {
     // the beam sits behind the glass, so the same bend carries it. push
     // this too far and it tears where the displacement jumps, so the
     // amount is a dial
-    vec2 wpos = u + dir * push * uWaveBend * 2.2;
+    // same sign as the background, or the two bends cancel and the beam
+    // reads as if it were sitting on top of the glass
+    vec2 wpos = u - dir * push * uWaveBend * 2.2;
     vec3 wv = waveField(wpos, uTime);
 
     // slight glass tint toward the rim
