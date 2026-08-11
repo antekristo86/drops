@@ -114,11 +114,14 @@ void main() {
     col += vec3(1.0) * band * smoothstep(0.45, 1.0, topness) * 0.18;
   }
 
-  // glass barely casts. all that survives is a whisper of darkening
-  // hugging the outer edge, where the body bends light away from the plate
+  // glass casts, but barely: a wide low-density veil below the body and
+  // a slightly denser seam at the contact edge. present, never a stain
   float outside = step(0.0, d);
-  float seam = smoothstep(0.012, 0.0, d) * outside;
-  col *= 1.0 - seam * seam * 0.22;
+  float dCast = lensField(q - vec2(0.0, -0.045 * uR), c, uR) / gm;
+  float veil = smoothstep(0.075, 0.0, dCast) * outside;
+  veil *= veil;
+  float seam = smoothstep(0.014, 0.0, d) * outside;
+  col *= 1.0 - (veil * 0.13 + seam * seam * 0.12);
 
   // hairline rim
   float rim = smoothstep(0.0014, 0.0, abs(d));
