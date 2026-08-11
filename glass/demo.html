@@ -120,8 +120,8 @@ void main() {
   // multiplied into the plate, so it darkens the color instead of
   // laying grey on top
   float outside = step(0.0, d);
-  vec2 cast = vec2(0.0, -0.09 * uR);
-  float dCast = lensField(q - cast, c, uR) / gm;
+  vec2 castOff = vec2(0.0, -0.09 * uR);
+  float dCast = lensField(q - castOff, c, uR) / gm;
 
   float penumbra = smoothstep(0.11 * uR / 0.13, -0.01, dCast) * outside;
   penumbra *= penumbra;                       // quadratic, no flat halo
