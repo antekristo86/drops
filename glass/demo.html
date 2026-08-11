@@ -280,15 +280,18 @@ void main() {
     // silhouette instead of falling as a flat band. that curve is what
     // makes it read as glass rather than a gradient
     float dOut = d - hsC.y * uCausticGap;
-    float downness = smoothstep(-0.15, 0.75, (c.y - q.y) / max(hsC.y, 1e-4));
+    float downness = smoothstep(0.25, 1.15, (c.y - q.y) / max(hsC.y, 1e-4));
     if (dOut > 0.0 && downness > 0.001 && uCaustic > 0.001) {
       float xn = (q.x - c.x) / hsC.x;
       float travel = dOut / max(hsC.y, 1e-4);           // distance from the edge
       // size scales how wide and how far the patch reaches. it does not
       // touch travel, so the profile keeps its shape
       float defocus = (0.34 + travel * 0.85) * uCausticSize;
-      float reach = exp(-travel * 0.55 / max(uCausticSize, 0.15));
-      float ends = smoothstep(1.45, 0.6, abs(xn));
+      // quadratic falloff. linear keeps too much light far out and the
+      // pool turns into a field
+      float sz = max(uCausticSize, 0.15);
+      float reach = exp(-travel * travel * 1.6 / (sz * sz));
+      float ends = smoothstep(1.15, 0.25, abs(xn));
 
       vec3 acc = vec3(0.0), wsum = vec3(0.0);
       for (int i = 0; i < 7; i++) {
