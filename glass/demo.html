@@ -83,7 +83,8 @@ uniform float uSplay;                     // how sharply the rim flares
 // this piece specifically
 uniform float uShapeW, uShapeH, uSmoke, uSmokePos;
 uniform float uWaveAmp, uWaveGirth, uWaveInt, uWaveSat, uWaveBend;
-uniform float uShadow, uRimTint, uWaveFreq, uWaveSpeed, uWaveCore, uWaveReach, uCaustic;
+uniform float uShadow, uRimTint, uWaveFreq, uWaveSpeed, uWaveCore, uWaveReach;
+uniform float uCaustic, uCausticSize, uCausticGap;
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uVel;       // lens velocity, squashes the bubble
@@ -276,13 +277,17 @@ void main() {
   // appears at the edges of that image the way it does under real glass
   {
     vec2 hsC = vec2(uR * uShapeW, uR * uShapeH) * uScale;
-    float below = (c.y - hsC.y) - q.y;
+    float gap = hsC.y * uCausticGap;
+    float below = (c.y - hsC.y - gap) - q.y;
     if (below > 0.0 && uCaustic > 0.001) {
       float xn = (q.x - c.x) / hsC.x;
-      float travel = below / max(hsC.y, 1e-4);          // in body heights
+      float travel = below / max(hsC.y * uCausticSize, 1e-4);
       float defocus = 0.34 + travel * 0.85;             // spreads as it falls
       float reach = exp(-travel * 0.55);                // and dims
-      float ends = smoothstep(1.45, 0.6, abs(xn));
+      // no hard start: it fades in, and only under the body, where
+      // there is something above to gather the light
+      float enter = smoothstep(0.0, hsC.y * 0.5, below);
+      float ends = smoothstep(1.05, 0.35, abs(xn)) * enter;
 
       vec3 acc = vec3(0.0), wsum = vec3(0.0);
       for (int i = 0; i < 7; i++) {
@@ -490,7 +495,8 @@ const RANGES = {
   waveInt: [0, 3, 0.02], waveSat: [0.02, 0.8, 0.01], waveBend: [0, 2, 0.05],
   shadow: [0, 0.6, 0.01], rimTint: [0, 3, 0.05],
   waveFreq: [0.5, 8, 0.1], waveSpeed: [0, 2.5, 0.05],
-  waveCore: [0.02, 0.5, 0.005], waveReach: [0.3, 12, 0.1], caustic: [0, 2, 0.02]
+  waveCore: [0.02, 0.5, 0.005], waveReach: [0.3, 12, 0.1], caustic: [0, 2, 0.02],
+  causticSize: [0.3, 3, 0.05], causticGap: [0, 2, 0.05]
 };
 const panel = document.getElementById('tune');
 panel.innerHTML = Object.keys(RANGES).map(k => {
