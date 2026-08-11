@@ -361,13 +361,45 @@ const uVel = gl.getUniformLocation(prog, 'uVel');
 
 let lx = 0.5, ly = 0.5, vx = 0, vy = 0;
 
-// hover: the body grows a little, springs back when you leave
+// hover grows the body, drag moves it. hit test uses the live shape,
+// so it stays correct when the dials change
 let scale = 1, scaleT = 1, scaleV = 0;
+let dragging = false, grabX = 0, grabY = 0;
+
+function overLens(mx, my) {
+  const R = 0.13;
+  const hw = R * P.shapeW * scale, hh = R * P.shapeH * scale;
+  const ar = canvas.width / canvas.height;
+  return Math.abs((mx - lx) * ar) < hw + 0.02 && Math.abs(my - ly) < hh + 0.02;
+}
 
 addEventListener('pointermove', e => {
   const mx = e.clientX / innerWidth, my = 1 - e.clientY / innerHeight;
-  const inside = Math.abs(mx - lx) < 0.19 && Math.abs(my - ly) < 0.11;
+  if (dragging) {
+    lx = mx - grabX;
+    ly = my - grabY;
+    lx = Math.max(0.02, Math.min(0.98, lx));
+    ly = Math.max(0.02, Math.min(0.98, ly));
+    return;
+  }
+  const inside = overLens(mx, my);
   scaleT = inside ? 1.12 : 1;
+  canvas.style.cursor = inside ? 'grab' : 'crosshair';
+});
+
+canvas.addEventListener('pointerdown', e => {
+  const mx = e.clientX / innerWidth, my = 1 - e.clientY / innerHeight;
+  if (!overLens(mx, my)) return;
+  dragging = true;
+  grabX = mx - lx;
+  grabY = my - ly;
+  canvas.setPointerCapture(e.pointerId);
+  canvas.style.cursor = 'grabbing';
+});
+addEventListener('pointerup', () => {
+  if (!dragging) return;
+  dragging = false;
+  canvas.style.cursor = 'grab';
 });
 addEventListener('pointerleave', () => { scaleT = 1; });
 
