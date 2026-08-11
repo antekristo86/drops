@@ -69,14 +69,12 @@ uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uVel;       // lens velocity, squashes the bubble
 
-// apple squircle, stretched: near-flat edges, continuously curved
-// corners. the icon curve, wider than tall
+// a rectangle with rounded corners. exact sdf
 float lensField(vec2 q, vec2 c, float r) {
-  vec2 p = q - c;
-  float a = r * 1.5;          // half width
-  float b = r;                // half height
-  float n = 4.2;              // squircle exponent
-  return pow(pow(abs(p.x / a), n) + pow(abs(p.y / b), n), 1.0 / n) - 1.0;
+  vec2 halfSize = vec2(r * 1.5, r);
+  float rad = r * 0.5;
+  vec2 d2 = abs(q - c) - (halfSize - rad);
+  return length(max(d2, vec2(0.0))) + min(max(d2.x, d2.y), 0.0) - rad;
 }
 
 vec3 hue(float t) {
