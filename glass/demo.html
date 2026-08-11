@@ -84,8 +84,8 @@ float lensField(vec2 q, vec2 c, float r) {
 // the silhouette, but its gradient flips along the medial axis of any
 // straight edge, and that seam prints straight through the body
 float domeH(vec2 p, vec2 c, float r) {
-  vec2 half = vec2(r * uShapeW, r * uShapeH) * uScale;
-  vec2 u = (p - c) / half;
+  vec2 hs = vec2(r * uShapeW, r * uShapeH) * uScale;
+  vec2 u = (p - c) / hs;
   float rr = pow(pow(abs(u.x), 4.0) + pow(abs(u.y), 4.0), 0.25);
   return sqrt(max(0.0, 1.0 - min(rr, 1.0) * min(rr, 1.0)));
 }
