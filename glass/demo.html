@@ -280,26 +280,25 @@ void main() {
     if (below > 0.0 && uCaustic > 0.001) {
       float xn = (q.x - c.x) / hsC.x;
       float travel = below / max(hsC.y, 1e-4);          // in body heights
-      float defocus = 0.30 + travel * 0.80;             // spreads as it falls
-      float ends = smoothstep(1.5, 0.55, abs(xn));
-
-      // how bright the beam runs above this point, and where it sits
-      float srcY = waveSpine(xn * 2.3, uTime);
-      float src = 0.30 + 0.70 * waveField(vec2(xn * 0.95, srcY), uTime).g;
+      float defocus = 0.34 + travel * 0.85;             // spreads as it falls
+      float reach = exp(-travel * 0.55);                // and dims
+      float ends = smoothstep(1.45, 0.6, abs(xn));
 
       vec3 acc = vec3(0.0), wsum = vec3(0.0);
       for (int i = 0; i < 7; i++) {
         float k = float(i) / 6.0;
-        // every wavelength focuses at its own depth. that is why the
-        // patch is white where they pile up and coloured where they part
-        float focus = (k - 0.5) * uDispersion * 13.0;
-        float dy = travel - 0.12 - focus + srcY * 0.55;
+        // deflection grows with the distance travelled. that separation
+        // is the whole reason the fringe is coloured
+        float dk = (k - 0.5) * uDispersion * 11.0 * travel;
+        float srcX = xn + dk * 0.6;
+        float yw = waveSpine(srcX * 2.3, uTime);        // beam height, body units
+        float dy = (-1.0 - travel) - (yw - dk * 1.4);   // where its image lands
         float prof = exp(-dy * dy / (defocus * defocus));
         vec3 w = spectral(k) + 0.3;
         acc += w * prof;
         wsum += w;
       }
-      col += acc / max(wsum, vec3(0.001)) * src * ends * uCaustic * 0.85;
+      col += acc / max(wsum, vec3(0.001)) * reach * ends * uCaustic * 1.15;
     }
   }
 
