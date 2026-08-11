@@ -69,6 +69,32 @@ uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uVel;       // lens velocity, squashes the bubble
 
+// the pebble: left-right symmetric, top-bottom asymmetric. flat-ish top
+// hugging the island, deep round belly below, fully rounded ends.
+// raw field, normalized to a distance in main
+float lensField(vec2 q, vec2 c, float r) {
+  vec2 p = q - c;
+  float a  = r * 1.5;                    // half width
+  float bT = r * 0.85;                   // top half height, shallower
+  float bB = r * 1.15;                   // bottom half height, deeper
+  float top = step(0.0, p.y);
+  float b = mix(bB, bT, top);
+  float n = mix(2.05, 2.6, top);         // belly round, top flatter
+  return pow(pow(abs(p.x / a), n) + pow(abs(p.y / b), n), 1.0 / n) - 1.0;
+}
+
+void main() { vUv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }`;
+
+const fsSrc = `
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uTime;
+uniform vec2 uLens;      // lens center, uv
+uniform float uR;        // lens radius, uv (y-normalized)
+uniform vec2 uVel;       // lens velocity, squashes the bubble
+
 // the inflated slot: a true stadium (semicircular ends) whose top and
 // bottom bulge outward. raw field, normalized to a distance in main
 float lensField(vec2 q, vec2 c, float r) {
