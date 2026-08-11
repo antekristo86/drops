@@ -87,7 +87,11 @@ float domeH(vec2 p, vec2 c, float r) {
   vec2 hs = vec2(r * uShapeW, r * uShapeH) * uScale;
   vec2 u = (p - c) / hs;
   float rr = pow(pow(abs(u.x), 4.0) + pow(abs(u.y), 4.0), 0.25);
-  return sqrt(max(0.0, 1.0 - min(rr, 1.0) * min(rr, 1.0)));
+  // a raised cosine, not a hemisphere. a hemisphere stands vertical at
+  // the rim, its slope runs to infinity, and the bend explodes there.
+  // this one flattens out at both the centre and the edge
+  float t = min(rr, 1.0);
+  return 0.5 + 0.5 * cos(3.14159265 * t);
 }
 
 // spectrum by wavelength. k = 0 red, k = 1 violet
