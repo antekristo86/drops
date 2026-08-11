@@ -276,43 +276,40 @@ void main() {
   // appears at the edges of that image the way it does under real glass
   {
     vec2 hsC = vec2(uR * uShapeW, uR * uShapeH) * uScale;
-    // the light leaves through the outline, so the patch follows the
-    // silhouette instead of falling as a flat band. that curve is what
-    // makes it read as glass rather than a gradient
-    float dOut = d - hsC.y * uCausticGap;
-    float downness = smoothstep(0.25, 1.15, (c.y - q.y) / max(hsC.y, 1e-4));
-    if (dOut > 0.0 && downness > 0.001 && uCaustic > 0.001) {
+    // light falls straight down out of the body, so the pool is measured
+    // from the bottom line. measuring from the outline makes the isolines
+    // the shape of the lens, and the silhouette prints itself into the light
+    float travel = ((c.y - hsC.y * (1.0 + uCausticGap)) - q.y) / max(hsC.y, 1e-4);
+    if (travel > -0.6 && uCaustic > 0.001) {
       float xn = (q.x - c.x) / hsC.x;
-      float travel = dOut / max(hsC.y, 1e-4);           // distance from the edge
-      // size scales how wide and how far the patch reaches. it does not
-      // touch travel, so the profile keeps its shape
-      float defocus = (0.34 + travel * 0.85) * uCausticSize;
+      float sz = max(uCausticSize, 0.15);
+      // wide feather against the body. a hard mask is what puts an edge on top
+      float clear = smoothstep(-hsC.y * 0.55, hsC.y * 0.05, d);
+      float rise  = smoothstep(-0.05, 0.30, travel);
+      float defocus = (0.10 + max(travel, 0.0) * 0.70) * sz;
       // quadratic falloff. linear keeps too much light far out and the
       // pool turns into a field
-      float sz = max(uCausticSize, 0.15);
       float reach = exp(-travel * travel * 1.6 / (sz * sz));
-      float ends = smoothstep(1.15, 0.25, abs(xn));
+      float ends  = smoothstep(1.25, 0.15, abs(xn));
 
-      // the light comes from the beam, so it arrives carrying the beam's
-      // own colour. dispersion then pulls those wavelengths apart as
-      // they travel, which is what puts fringes on the edges
+      // the beam drives the brightness, the wavelength drives the colour,
+      // off the same spectrum the wave uses. each wavelength focuses at its
+      // own depth, and that separation is the only reason a caustic has colour
       float srcY = waveSpine(xn * 2.3, uTime);
       vec3 acc = vec3(0.0);
       float wsum = 0.0;
       for (int i = 0; i < 7; i++) {
         float k = float(i) / 6.0;
-        float focus = (k - 0.5) * uDispersion * 22.0;
-        float dy = travel - 0.10 - focus;
+        float focus = (k - 0.5) * uDispersion * 46.0;
+        float dy = travel - 0.22 - focus;
         float prof = exp(-dy * dy / (defocus * defocus));
-        // sample the beam a touch off its spine, so this ray picks up
-        // the colour that actually sits at that height
-        vec3 beam = waveField(vec2(xn * 0.95 + focus * 0.5,
-                                   srcY + (k - 0.5) * 0.22), uTime);
-        acc += beam * prof;
+        vec3 bs = waveField(vec2(xn * 0.95 + focus * 0.4, srcY), uTime);
+        float lum = max(max(bs.r, bs.g), bs.b);
+        acc  += spectral(k) * lum * prof;
         wsum += prof;
       }
       acc /= max(wsum, 0.001);
-      col += acc * reach * ends * downness * uCaustic * 1.6;
+      col += acc * reach * ends * rise * clear * uCaustic * 1.6;
     }
   }
 
