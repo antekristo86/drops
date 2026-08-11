@@ -95,10 +95,10 @@ vec3 waveField(vec2 w, float t) {
   vec3 acc = vec3(0.0);
   for (int i = 0; i < 9; i++) {
     float k = float(i) / 8.0;
-    float off  = (k - 0.5) * 0.062;                 // fan open vertically
-    float tilt = (k - 0.5) * 0.11 * (w.x + 0.35);   // and diverge to the right
+    float off  = (k - 0.5) * 0.20;                  // fan open vertically
+    float tilt = (k - 0.5) * 0.17 * (w.x + 0.35);   // and diverge to the right
     float dy = w.y - (base + off + tilt);
-    float wd = 0.030 + 0.022 * abs(k - 0.5) * 2.0;  // outer bands softer
+    float wd = 0.075 + 0.045 * abs(k - 0.5) * 2.0;  // outer bands softer
     acc += spectral(k) * exp(-dy * dy / (wd * wd));
   }
   return acc / 4.2 * ends;
@@ -181,7 +181,7 @@ void main() {
     smoke = smoke * smoke * (3.0 - 2.0 * smoke);
     col = mix(col, col * 0.07, smoke * 0.94);
 
-    col += wv * 0.5;
+    col += wv * 0.78;
 
     // the only colour here comes from the dispersion above. no painted
     // spectrum: the reference keeps its rainbow in the wave, not the rim
