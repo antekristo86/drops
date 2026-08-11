@@ -289,21 +289,23 @@ void main() {
       float enter = smoothstep(0.0, hsC.y * 0.5, below);
       float ends = smoothstep(1.05, 0.35, abs(xn)) * enter;
 
+      // how bright the beam runs above this point, and where it sits
+      float srcY = waveSpine(xn * 2.3, uTime);
+      float src = 0.30 + 0.70 * waveField(vec2(xn * 0.95, srcY), uTime).g;
+
       vec3 acc = vec3(0.0), wsum = vec3(0.0);
       for (int i = 0; i < 7; i++) {
         float k = float(i) / 6.0;
-        // deflection grows with the distance travelled. that separation
-        // is the whole reason the fringe is coloured
-        float dk = (k - 0.5) * uDispersion * 11.0 * travel;
-        float srcX = xn + dk * 0.6;
-        float yw = waveSpine(srcX * 2.3, uTime);        // beam height, body units
-        float dy = (-1.0 - travel) - (yw - dk * 1.4);   // where its image lands
+        // every wavelength focuses at its own depth. white where they
+        // pile up, coloured where they part
+        float focus = (k - 0.5) * uDispersion * 13.0;
+        float dy = travel - 0.12 - focus + srcY * 0.55;
         float prof = exp(-dy * dy / (defocus * defocus));
         vec3 w = spectral(k) + 0.3;
         acc += w * prof;
         wsum += w;
       }
-      col += acc / max(wsum, vec3(0.001)) * reach * ends * uCaustic * 1.15;
+      col += acc / max(wsum, vec3(0.001)) * reach * src * ends * uCaustic * 0.95;
     }
   }
 
