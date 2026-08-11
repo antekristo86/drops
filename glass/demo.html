@@ -113,18 +113,11 @@ void main() {
     smoke = smoke * smoke * (3.0 - 2.0 * smoke);
     col = mix(col, col * 0.07, smoke * 0.94);
 
-    // prismatic sliver: a thin spectral arc, only in a moving window,
-    // a whisper not a rainbow
+    // the only colour here comes from the dispersion above. no painted
+    // spectrum: the reference keeps its rainbow in the wave, not the rim
     float band = smoothstep(0.14, 0.02, depth) * smoothstep(0.0, 0.02, depth);
-    float ang = atan(q.y - c.y, q.x - c.x);
-    vec3 iri = hue(ang * 0.35 + uTime * 0.04);
-    float window = smoothstep(0.45, 1.0, sin(ang - uTime * 0.35));
-    float window2 = smoothstep(0.7, 1.0, sin(ang * 1.0 + 2.6 + uTime * 0.22));
-    col += iri * band * (window * 0.22 + window2 * 0.12);
-
-    // sheen: soft white highlight top edge, subtle
     float topness = clamp((q.y - c.y) / uR, -1.0, 1.0);
-    col += vec3(1.0) * band * smoothstep(0.45, 1.0, topness) * 0.18;
+    col += vec3(1.0) * band * smoothstep(0.45, 1.0, topness) * 0.14;
   }
 
   // glass casts, but barely: a wide low-density veil below the body and
