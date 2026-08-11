@@ -167,13 +167,8 @@ const uLens = gl.getUniformLocation(prog, 'uLens');
 const uRU = gl.getUniformLocation(prog, 'uR');
 const uVel = gl.getUniformLocation(prog, 'uVel');
 
-// lens follows the cursor with inertia. same physics as everything else
-let lx = 0.5, ly = 0.45, tx = 0.5, ty = 0.45, vx = 0, vy = 0;
-
-addEventListener('pointermove', e => {
-  tx = e.clientX / innerWidth;
-  ty = 1 - e.clientY / innerHeight;
-});
+// step 1: the lens sits still, top center
+let lx = 0.5, ly = 0.82, vx = 0, vy = 0;
 
 function resize() {
   dpr = Math.min(devicePixelRatio, 2);
@@ -193,13 +188,6 @@ let last = performance.now();
 function frame(t) {
   const now = performance.now();
   last = now;
-
-  // critically damped chase
-  const k = 0.015, cd = 2 * Math.sqrt(k);
-  vx += (tx - lx) * k - vx * cd * 0.6;
-  vy += (ty - ly) * k - vy * cd * 0.6;
-  lx += vx;
-  ly += vy;
 
   gl.uniform1i(uTex, 0);
   gl.uniform2f(uRes, canvas.width, canvas.height);
