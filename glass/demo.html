@@ -69,9 +69,8 @@ uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uVel;       // lens velocity, squashes the bubble
 
-// the pebble: left-right symmetric, top-bottom asymmetric. flat-ish top
-// hugging the island, deep round belly below, fully rounded ends.
-// raw field, normalized to a distance in main
+// the pebble: left-right symmetric, top-bottom asymmetric. flat-ish top,
+// deep round belly below, fully rounded ends
 float lensField(vec2 q, vec2 c, float r) {
   vec2 p = q - c;
   float a  = r * 1.5;                    // half width
@@ -81,54 +80,6 @@ float lensField(vec2 q, vec2 c, float r) {
   float b = mix(bB, bT, top);
   float n = mix(2.05, 2.6, top);         // belly round, top flatter
   return pow(pow(abs(p.x / a), n) + pow(abs(p.y / b), n), 1.0 / n) - 1.0;
-}
-
-void main() { vUv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }`;
-
-const fsSrc = `
-precision highp float;
-varying vec2 vUv;
-uniform sampler2D uTex;
-uniform vec2 uRes;
-uniform float uTime;
-uniform vec2 uLens;      // lens center, uv
-uniform float uR;        // lens radius, uv (y-normalized)
-uniform vec2 uVel;       // lens velocity, squashes the bubble
-
-// the inflated slot: a true stadium (semicircular ends) whose top and
-// bottom bulge outward. raw field, normalized to a distance in main
-float lensField(vec2 q, vec2 c, float r) {
-  vec2 p = q - c;
-  float R  = r * 0.88;        // cap radius
-  float hl = r * 0.5;         // straight core half length
-  float t = clamp(abs(p.x) / hl, 0.0, 1.0);
-  float puff = 0.14 * R * (1.0 - t * t);   // belly, zero at the caps
-  vec2 k = vec2(max(abs(p.x) - hl, 0.0), p.y);
-  return length(k) - (R + puff);
-}
-
-void main() { vUv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }`;
-
-const fsSrc = `
-precision highp float;
-varying vec2 vUv;
-uniform sampler2D uTex;
-uniform vec2 uRes;
-uniform float uTime;
-uniform vec2 uLens;      // lens center, uv
-uniform float uR;        // lens radius, uv (y-normalized)
-uniform vec2 uVel;       // lens velocity, squashes the bubble
-
-// the inflated slot: a superellipse, wider than tall, sides bulging.
-// raw implicit field, normalized to a true distance in main
-float lensField(vec2 q, vec2 c, float r) {
-  vec2 p = q - c;
-  float a = r * 1.38;         // half width
-  float b = r;                // half height
-  // separate exponents per axis: fully round sides, flatter top and bottom
-  float nx = 2.0;
-  float ny = 3.4;
-  return pow(pow(abs(p.x / a), nx) + pow(abs(p.y / b), ny), 0.5) - 1.0;
 }
 
 vec3 hue(float t) {
