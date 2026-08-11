@@ -293,21 +293,26 @@ void main() {
       float reach = exp(-travel * travel * 1.6 / (sz * sz));
       float ends = smoothstep(1.15, 0.25, abs(xn));
 
-      vec3 acc = vec3(0.0), wsum = vec3(0.0);
+      // the light comes from the beam, so it arrives carrying the beam's
+      // own colour. dispersion then pulls those wavelengths apart as
+      // they travel, which is what puts fringes on the edges
+      float srcY = waveSpine(xn * 2.3, uTime);
+      vec3 acc = vec3(0.0);
+      float wsum = 0.0;
       for (int i = 0; i < 7; i++) {
         float k = float(i) / 6.0;
-        // deflection grows with the distance travelled. that separation
-        // is the whole reason the fringe is coloured
-        float dk = (k - 0.5) * uDispersion * 11.0 * travel;
-        float srcX = xn + dk * 0.6;
-        float yw = waveSpine(srcX * 2.3, uTime);        // beam height, body units
-        float dy = (-1.0 - travel) - (yw - dk * 1.4);   // where its image lands
+        float focus = (k - 0.5) * uDispersion * 22.0;
+        float dy = travel - 0.10 - focus;
         float prof = exp(-dy * dy / (defocus * defocus));
-        vec3 w = spectral(k) + 0.3;
-        acc += w * prof;
-        wsum += w;
+        // sample the beam a touch off its spine, so this ray picks up
+        // the colour that actually sits at that height
+        vec3 beam = waveField(vec2(xn * 0.95 + focus * 0.5,
+                                   srcY + (k - 0.5) * 0.22), uTime);
+        acc += beam * prof;
+        wsum += prof;
       }
-      col += acc / max(wsum, vec3(0.001)) * reach * ends * downness * uCaustic * 1.15;
+      acc /= max(wsum, 0.001);
+      col += acc * reach * ends * downness * uCaustic * 1.6;
     }
   }
 
