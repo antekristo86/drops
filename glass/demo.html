@@ -139,43 +139,43 @@ float waveSpine(float x, float t) {
   return uWaveAmp * (a + b) * 0.9 * breathe;
 }
 
-// ONE ribbon, not seven snakes. the strands run together and split only
-// slightly: same wave, a touch of lag and lift per wavelength. that split
-// is the spectrum, blue riding high, red hanging low, white where they
-// still overlap. the ribbon twists along its run like a flag and swings
-// in depth, so it swells and thins. the spindle falls out of that
+// not a glowing band. six broad lobes of colour, each one a wide soft
+// patch with its own place along the run, its own height and its own
+// drift. they slide over each other like coloured lights: where two meet
+// they mix, and only the deepest pile-up burns to white. screened, not
+// summed, so the colours stay saturated instead of averaging to grey
 vec3 waveField(vec2 w, float t) {
   float ends = smoothstep(1.34, 0.30, abs(w.x));
   if (ends <= 0.001) return vec3(0.0);
 
   float tw   = sin(w.x * 1.4 - t * uWaveSpeed * 0.55);
-  float face = 0.30 + 0.70 * abs(tw);            // 0 edge-on, 1 face-on
+  float face = 0.45 + 0.55 * abs(tw);            // 0 edge-on, 1 face-on
   float z    = sin(w.x * 0.9 - t * uWaveSpeed * 0.33 + 1.7);
   float per  = 1.0 / (1.0 + z * 0.30);           // nearer is bigger
   float run  = smoothstep(1.34, 0.42, abs(w.x)); // the ribbon has ends
-  float wide = face * per * run;
 
   vec3 acc = vec3(0.0);
-  for (int i = 0; i < 7; i++) {
-    float k = float(i) / 6.0;                    // 0 red, 1 blue
-    float s = k - 0.5;
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i);
+    float k  = fi / 5.0;                         // 0 red, 1 blue
+    float s  = k - 0.5;
 
-    // small deviations only. one ribbon splitting, not seven errands
-    float y = waveSpine(w.x * 2.3 + s * 0.40, t) * (1.0 + s * 0.10)
-            + s * uWaveReach * uWaveGirth * 1.25;
+    // where along the run this colour is sitting right now
+    float cx  = 0.80 * sin(t * (0.13 + 0.045 * fi) + fi * 2.1);
+    float wd  = 0.80 + 0.30 * sin(fi * 1.7);
+    float env = exp(-pow((w.x - cx) / wd, 2.0));
 
-    // every strand the same weight and wide enough to touch its neighbours.
-    // weighting the outer ones harder turns them into two lone hairlines
-    // with mud between. the glare in the middle is not painted either: it
-    // is simply where the most strands overlap
-    float g  = uWaveGirth * wide * (0.90 + 0.25 * k);
+    float y = waveSpine(w.x * 2.3 + s * 0.80, t) * (1.0 + s * 0.18)
+            + s * uWaveReach * uWaveGirth * 2.4;
+
+    float g  = uWaveGirth * face * per * (1.7 + 0.5 * sin(fi * 2.3));
     float dy = (w.y - y * per) / max(g, 1e-4);
 
-    vec3 tone = mix(vec3(1.0, 0.99, 0.97), spectral(k), min(uWaveSat * 12.0, 1.0));
-    acc += tone * exp(-dy * dy) * per * run;
+    float a = exp(-dy * dy) * env * run * per;
+    acc = 1.0 - (1.0 - acc) * (1.0 - clamp(spectral(k) * a, 0.0, 1.0));
   }
 
-  return acc * 0.42 * ends;
+  return acc * ends;
 }
 
 void main() {
@@ -420,9 +420,9 @@ const uScale = gl.getUniformLocation(prog, 'uScale');
 const DEFAULTS = {
   lightAngle: 2.0, lightPower: 0.8, refraction: 0.85, depth: 1.0,
   dispersion: 0.016, frost: 0.0, splay: 3.5,
-  shapeW: 2.70, shapeH: 0.68, smoke: 0.90, smokePos: 0.00,
-  waveAmp: 0.32, waveGirth: 0.16, waveInt: 1.5, waveSat: 0.08, waveBend: 0.45,
-  shadow: 0.14, rimTint: 0.45, waveFreq: 1.25, waveSpeed: 0.45, waveCore: 0.060, waveReach: 1.45, caustic: 0.5, causticSize: 1.0, causticGap: 0.0
+  shapeW: 2.70, shapeH: 0.68, smoke: 0.55, smokePos: 0.00,
+  waveAmp: 0.32, waveGirth: 0.13, waveInt: 2.2, waveSat: 0.08, waveBend: 0.45,
+  shadow: 0.14, rimTint: 0.45, waveFreq: 1.25, waveSpeed: 0.45, waveCore: 0.060, waveReach: 2.0, caustic: 0.5, causticSize: 1.0, causticGap: 0.0
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
