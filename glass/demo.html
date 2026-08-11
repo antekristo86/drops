@@ -131,11 +131,12 @@ vec3 spectral(float k) {
 // the whole thing breathes
 float waveSpine(float x, float t) {
   float ph = t * uWaveSpeed;
+  // one clean wave with its own octave on top. simple ratios read as
+  // harmony; incommensurate ones never repeat and read as noise
   float a = sin(x * uWaveFreq - ph);
-  float b = sin(x * uWaveFreq * 0.61 + ph * 0.73 + 1.1) * 0.55;
-  float c = sin(x * uWaveFreq * 1.7 - ph * 1.4 + 2.3) * 0.22;
-  float breathe = 0.78 + 0.22 * sin(t * 0.45);
-  return uWaveAmp * (a + b + c) * 0.62 * breathe;
+  float b = sin(x * uWaveFreq * 2.0 + ph * 0.5 + 0.8) * 0.28;
+  float breathe = 0.86 + 0.14 * sin(t * 0.31);
+  return uWaveAmp * (a + b) * 0.78 * breathe;
 }
 
 // the wave is a beam, not a stack of stripes. a white hot filament with
@@ -149,7 +150,10 @@ vec3 waveField(vec2 w, float t) {
   float dy = w.y - base;
 
   // the beam is fuller in the middle of its run and thins toward the caps
-  float girth = uWaveGirth + uWaveGirth * 0.53 * smoothstep(1.1, 0.0, abs(w.x + 0.15));
+  // the fan opens and closes along the run, so the bands drift against
+  // each other instead of travelling as one rigid ribbon
+  float breath = 1.0 + 0.20 * sin(w.x * 1.6 - t * 0.34) + 0.09 * sin(w.x * 3.1 + t * 0.21);
+  float girth = (uWaveGirth + uWaveGirth * 0.53 * smoothstep(1.1, 0.0, abs(w.x + 0.15))) * breath;
   float u = dy / girth;                       // 0 core, ±1 edge of the beam
   float au = abs(u);
 
