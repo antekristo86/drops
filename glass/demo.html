@@ -157,20 +157,28 @@ vec3 waveField(vec2 w, float t) {
   float u = dy / girth;                       // 0 core, ±1 edge of the beam
   float au = abs(u);
 
-  // wavelength by direction: gold rising off the top, cyan sinking below
-  float k = clamp(0.5 - u * 0.42 + 0.04 * sin(t * 0.2), 0.0, 1.0);
+  // wavelength by direction: red at the top, blue at the bottom. the whole
+  // spectrum lives in a narrow band, the way a thin film splits light
+  float k = clamp(0.5 - u * 0.60 + 0.04 * sin(t * 0.2), 0.0, 1.0);
   vec3 hue = spectral(k);
 
   // colour takes over almost immediately off the filament
   float sat = smoothstep(0.01, uWaveSat, au);
   vec3 tone = mix(vec3(1.0, 0.99, 0.97), hue, sat);
 
-  // two dials: how fat the filament runs, how far the colour reaches out
-  float bodyG = exp(-u * u * 1.15);
-  float tail  = 0.34 / (1.0 + au * au * uWaveReach);
+  // the ribbon is not symmetric. above the red edge it stops dead; below
+  // the blue it spills into a wide pale bloom. a symmetric falloff smears
+  // red over everything above and the whole thing turns to brown wash
+  float above = max(u, 0.0);
+  float below = max(-u, 0.0);
+  // flat through the middle, quick shoulders. a plain gaussian peaks at the
+  // filament and falls away at once, which reads as a wire, not a ribbon
+  float band  = exp(-pow(au, 2.6) * 1.25) * exp(-above * above * 1.1);
+  float bloom = exp(-below * below * uWaveReach * 0.11);
   float core  = exp(-u * u / max(uWaveCore * uWaveCore, 1e-5));
 
-  vec3 acc = tone * (bodyG * 1.15 + tail * 0.7);
+  vec3 acc = tone * band * 1.25;
+  acc += vec3(1.00, 0.99, 0.98) * bloom * 0.20;
   acc += vec3(1.0, 0.99, 0.97) * core * 0.9;
   return acc * ends;
 }
@@ -400,8 +408,8 @@ const DEFAULTS = {
   lightAngle: 2.0, lightPower: 0.8, refraction: 0.85, depth: 1.0,
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.90, smokePos: 0.00,
-  waveAmp: 0.28, waveGirth: 0.185, waveInt: 0.95, waveSat: 0.08, waveBend: 0.45,
-  shadow: 0.14, rimTint: 0.45, waveFreq: 0.9, waveSpeed: 0.45, waveCore: 0.105, waveReach: 2.8, caustic: 0.5, causticSize: 1.0, causticGap: 0.0
+  waveAmp: 0.28, waveGirth: 0.30, waveInt: 1.0, waveSat: 0.08, waveBend: 0.45,
+  shadow: 0.14, rimTint: 0.45, waveFreq: 0.9, waveSpeed: 0.45, waveCore: 0.105, waveReach: 2.2, caustic: 0.5, causticSize: 1.0, causticGap: 0.0
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
