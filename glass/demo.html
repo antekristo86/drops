@@ -64,9 +64,17 @@ uniform vec2 uRes;
 uniform float uTime;
 uniform vec2  uPan;      // background drift
 uniform float uScale;    // grows on hover
-uniform float uShapeW, uShapeH, uThick, uMagnify, uSlope, uDisp;
-uniform float uSmoke, uSmokePos, uWaveAmp, uWaveGirth, uWaveInt, uWaveSat;
-uniform float uRim, uTir, uShadow, uRimTint, uWaveBend, uEdge;
+// glass, figma's model: every dial does exactly one thing
+uniform float uLightAngle, uLightPower;   // where the light stands, how hard
+uniform float uRefraction;                // how far the ray is pushed
+uniform float uDepth;                     // body thickness, drives magnification
+uniform float uDispersion;                // spectral split
+uniform float uFrost;                     // milkiness
+uniform float uSplay;                     // how sharply the rim flares
+// this piece specifically
+uniform float uShapeW, uShapeH, uSmoke, uSmokePos;
+uniform float uWaveAmp, uWaveGirth, uWaveInt, uWaveSat, uWaveBend;
+uniform float uShadow, uRimTint;
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uVel;       // lens velocity, squashes the bubble
@@ -91,7 +99,7 @@ float domeH(vec2 p, vec2 c, float r) {
   // that slope stays finite. a hemisphere would run to infinity there
   // and tear; a cosine would flatten out and give no splay at all
   float t = min(rr, 1.0);
-  return 1.0 - pow(t, uEdge);
+  return 1.0 - pow(t, uSplay);
 }
 
 // spectrum by wavelength. k = 0 red, k = 1 violet
@@ -173,34 +181,43 @@ void main() {
     vec2 n = g / gm;
     float bend = pow(1.0 - depth, 3.0) * smoothstep(0.0, 0.045, depth);
 
-    // normal from the height field, not from the distance field
+    // normal from the height field. depth scales the dome, so a deeper
+    // body tilts its surface more and bends harder
     float eh = 0.0025;
-    float dome = domeH(q, c, uR);
+    float dome = domeH(q, c, uR) * uDepth;
     vec2 hg = vec2(
       domeH(q + vec2(eh, 0.0), c, uR) - domeH(q - vec2(eh, 0.0), c, uR),
       domeH(q + vec2(0.0, eh), c, uR) - domeH(q - vec2(0.0, eh), c, uR)
-    ) / (2.0 * eh);
-    vec3 N = normalize(vec3(-hg * uSlope * 0.045, 1.0));
+    ) / (2.0 * eh) * uDepth;
+    vec3 N = normalize(vec3(-hg * 0.14, 1.0));
     vec3 I = vec3(0.0, 0.0, -1.0);
 
-    float thick = uThick * uR * dome;
+    float thick = uRefraction * uR * dome;
     // three indices: glass splits the spectrum on its own
-    vec3 Rr = refract(I, N, 0.662 - uDisp);
+    vec3 Rr = refract(I, N, 0.662 - uDispersion);
     vec3 Rg = refract(I, N, 0.662);
-    vec3 Rb = refract(I, N, 0.662 + uDisp * 1.2);
+    vec3 Rb = refract(I, N, 0.662 + uDispersion * 1.2);
 
     // thickness also magnifies what sits behind the middle
-    vec2 mid = vUv - (q - c) / vec2(aspect, 1.0) * uMagnify * dome;
+    vec2 mid = vUv - (q - c) / vec2(aspect, 1.0) * 0.45 * dome;
     vec2 pan = vec2(uPan.x, -uPan.y);
 
     vec2 ur = mid + Rr.xy / max(0.3, abs(Rr.z)) * thick / vec2(aspect, 1.0);
     vec2 ug = mid + Rg.xy / max(0.3, abs(Rg.z)) * thick / vec2(aspect, 1.0);
     vec2 ub = mid + Rb.xy / max(0.3, abs(Rb.z)) * thick / vec2(aspect, 1.0);
 
-    float rr = texture2D(uTex, vec2(ur.x + uPan.x, 1.0 - ur.y + uPan.y)).r;
-    float gg = texture2D(uTex, vec2(ug.x + uPan.x, 1.0 - ug.y + uPan.y)).g;
-    float bb = texture2D(uTex, vec2(ub.x + uPan.x, 1.0 - ub.y + uPan.y)).b;
-    col = vec3(rr, gg, bb);
+    // frost scatters the ray: a few offset taps averaged together
+    float fr = uFrost * 0.06;
+    vec3 acc3 = vec3(0.0);
+    for (int s = 0; s < 5; s++) {
+      float a2 = float(s) * 1.2566;
+      vec2 j = vec2(cos(a2), sin(a2)) * fr * (0.35 + 0.65 * float(s) / 4.0);
+      acc3 += vec3(
+        texture2D(uTex, vec2(ur.x + j.x + uPan.x, 1.0 - ur.y + j.y + uPan.y)).r,
+        texture2D(uTex, vec2(ug.x + j.x + uPan.x, 1.0 - ug.y + j.y + uPan.y)).g,
+        texture2D(uTex, vec2(ub.x + j.x + uPan.x, 1.0 - ub.y + j.y + uPan.y)).b);
+    }
+    col = acc3 / 5.0;
 
     // the wave sits inside the body, so the refracted ray finds it and
     // it warps and splits along with everything else
@@ -252,7 +269,7 @@ void main() {
   // the rim is not a stroke. it is the lit edge of a body with thickness:
   // a bright band where the surface turns into the light, fading to
   // nothing on the far side, plus a soft inner falloff for the wall
-  vec3 L = normalize(vec3(-0.4, 0.88, 0.26));
+  vec3 L = normalize(vec3(cos(uLightAngle), sin(uLightAngle), 0.42));
   vec3 nrm = normalize(vec3(g / gm, 0.5));
   float facing = clamp(dot(nrm, L), 0.0, 1.0);
 
@@ -285,9 +302,9 @@ void main() {
   col += wcol * band * prox * uRimTint * 0.5;
   col += wcol * wall * prox * uRimTint * 0.14;
 
-  col += rimCol * band * lit * uRim;
-  col += rimCol * band * tir * uTir;
-  col += rimCol * wall * tir * 0.1;
+  col += rimCol * band * lit * uLightPower * 0.35;
+  col += rimCol * band * tir * uLightPower * 0.62;
+  col += rimCol * wall * tir * uLightPower * 0.12;
   col += vec3(0.85, 0.9, 1.0) * wall * lit * 0.04;
   col += vec3(1.0) * band * 0.04;
 
@@ -327,9 +344,11 @@ const uScale = gl.getUniformLocation(prog, 'uScale');
 
 // press D for the panel
 const DEFAULTS = {
-  shapeW: 2.10, shapeH: 0.72, thick: 0.75, magnify: 0.55, slope: 3.20, disp: 0.011,
-  smoke: 0.82, smokePos: 0.00, waveAmp: 0.30, waveGirth: 0.16, waveInt: 1.15,
-  waveSat: 0.22, rim: 0.28, tir: 0.50, shadow: 0.16, rimTint: 1.10, waveBend: 0.0, edge: 3.5
+  lightAngle: 2.0, lightPower: 0.8, refraction: 0.85, depth: 1.0,
+  dispersion: 0.016, frost: 0.0, splay: 3.5,
+  shapeW: 2.70, shapeH: 0.68, smoke: 0.90, smokePos: 0.00,
+  waveAmp: 0.28, waveGirth: 0.185, waveInt: 0.95, waveSat: 0.08, waveBend: 0.45,
+  shadow: 0.28, rimTint: 0.45
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
@@ -389,11 +408,13 @@ requestAnimationFrame(frame);
 
 // ---- tuning panel ----
 const RANGES = {
-  shapeW: [0.5, 4, 0.05], shapeH: [0.2, 2, 0.02], thick: [0, 2.5, 0.01],
-  magnify: [0, 1.5, 0.01], slope: [0, 8, 0.05], disp: [0, 0.06, 0.001],
-  smoke: [0, 1, 0.01], smokePos: [-0.8, 0.8, 0.02], waveAmp: [0, 0.9, 0.01],
-  waveGirth: [0.02, 0.5, 0.005], waveInt: [0, 3, 0.02], waveSat: [0.02, 0.8, 0.01],
-  rim: [0, 1.5, 0.01], tir: [0, 1.5, 0.01], shadow: [0, 0.6, 0.01], rimTint: [0, 3, 0.05], waveBend: [0, 2, 0.05], edge: [1.5, 10, 0.1]
+  lightAngle: [0, 6.28, 0.02], lightPower: [0, 2, 0.02], refraction: [0, 2.5, 0.01],
+  depth: [0, 2, 0.02], dispersion: [0, 0.06, 0.001], frost: [0, 1, 0.01],
+  splay: [1.5, 10, 0.1],
+  shapeW: [0.5, 4, 0.05], shapeH: [0.2, 2, 0.02], smoke: [0, 1, 0.01],
+  smokePos: [-0.8, 0.8, 0.02], waveAmp: [0, 0.9, 0.01], waveGirth: [0.02, 0.5, 0.005],
+  waveInt: [0, 3, 0.02], waveSat: [0.02, 0.8, 0.01], waveBend: [0, 2, 0.05],
+  shadow: [0, 0.6, 0.01], rimTint: [0, 3, 0.05]
 };
 const panel = document.getElementById('tune');
 panel.innerHTML = Object.keys(RANGES).map(k => {
