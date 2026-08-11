@@ -86,7 +86,7 @@ uniform float uWaveAmp, uWaveFreq, uWaveSpeed, uWaveInt, uWaveBend;
 // the lobes: how tall each one is, how far apart they sit, how long they
 // run and how far they wander along that run
 uniform float uLobeH, uLobeGap, uLobeW, uLobeDrift;
-uniform float uShadow, uRimTint, uCaustic, uCausticSize, uCausticGap;
+uniform float uShadow, uRimTint, uCaustic, uCausticSize, uCausticGap, uCausticBlur;
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uVel;       // lens velocity, squashes the bubble
@@ -295,7 +295,10 @@ void main() {
       // wide feather against the body. a hard mask is what puts an edge on top
       float clear = smoothstep(-hsC.y * 0.55, hsC.y * 0.05, d);
       float rise  = smoothstep(-0.05, 0.30, travel);
-      float defocus = (0.10 + max(travel, 0.0) * 0.70) * sz;
+      // one dial for how out of focus the pool is. it widens the point
+      // spread in both axes, which is what a real defocus does
+      float blur = max(uCausticBlur, 0.02);
+      float defocus = (0.05 + 0.42 * blur + max(travel, 0.0) * 0.70) * sz;
       // quadratic falloff. linear keeps too much light far out and the
       // pool turns into a field
       float reach = exp(-travel * travel * 1.6 / (sz * sz));
@@ -306,7 +309,8 @@ void main() {
       // strands each carry their own colour and the pool inherits the mix
       vec3 src = vec3(0.0);
       for (int j = 0; j < 5; j++) {
-        src += waveField(vec2(xn * 0.95, (float(j) - 2.0) * 0.32), uTime);
+        float o = float(j) - 2.0;
+        src += waveField(vec2(xn * 0.95 + o * blur * 0.26, o * 0.32), uTime);
       }
       src *= 0.34;
       float lum = max(max(src.r, src.g), src.b);
@@ -426,7 +430,8 @@ const DEFAULTS = {
   shapeW: 2.70, shapeH: 0.68, smoke: 0.55, smokePos: 0.00,
   waveAmp: 0.32, waveFreq: 1.25, waveSpeed: 0.45, waveInt: 2.2, waveBend: 0.45,
   lobeH: 0.13, lobeGap: 2.0, lobeW: 0.80, lobeDrift: 0.80,
-  shadow: 0.14, rimTint: 0.45, caustic: 0.5, causticSize: 1.0, causticGap: 0.0
+  shadow: 0.14, rimTint: 0.45,
+  caustic: 0.5, causticSize: 1.0, causticGap: 0.0, causticBlur: 0.5
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
@@ -528,7 +533,7 @@ const RANGES = {
   lobeH: [0.02, 0.5, 0.005], lobeGap: [0.2, 6, 0.05],
   lobeW: [0.2, 2.5, 0.05], lobeDrift: [0, 2, 0.02],
   shadow: [0, 0.6, 0.01], rimTint: [0, 3, 0.05], caustic: [0, 2, 0.02],
-  causticSize: [0.3, 3, 0.05], causticGap: [-1.5, 2, 0.05]
+  causticSize: [0.3, 3, 0.05], causticGap: [-1.5, 2, 0.05], causticBlur: [0, 2, 0.02]
 };
 const panel = document.getElementById('tune');
 panel.innerHTML = Object.keys(RANGES).map(k => {
