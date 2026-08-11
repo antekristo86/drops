@@ -124,9 +124,19 @@ void main() {
   float seam = smoothstep(0.014, 0.0, d) * outside;
   col *= 1.0 - (veil * 0.16 + seam * seam * 0.12);
 
-  // hairline rim
-  float rim = smoothstep(0.0014, 0.0, abs(d));
-  col += vec3(rim) * 0.35;
+  // the rim is not a stroke. it is the lit edge of a body with thickness:
+  // a bright band where the surface turns into the light, fading to
+  // nothing on the far side, plus a soft inner falloff for the wall
+  vec3 L = normalize(vec3(-0.4, 0.88, 0.26));
+  vec3 nrm = normalize(vec3(g / gm, 0.5));
+  float facing = clamp(dot(nrm, L), 0.0, 1.0);
+
+  float band  = smoothstep(0.006, 0.0, abs(d));          // the lit edge
+  float wall  = smoothstep(0.022, 0.0, abs(d));          // thickness behind it
+  float lit   = pow(facing, 2.0);
+
+  col += vec3(1.0, 0.99, 0.96) * band * lit * 0.85;
+  col += vec3(0.85, 0.9, 1.0)  * wall * lit * 0.14;
 
   gl_FragColor = vec4(col, 1.0);
 }`;
