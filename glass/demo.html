@@ -270,25 +270,35 @@ void main() {
   // a slightly denser seam at the contact edge. present, never a stain
   float outside = step(0.0, d);
   // ---- caustic ----
-  // the lens gathers the beam and drops it through the lower wall. as
-  // that light falls it fans apart by wavelength, the way a prism does.
-  // brightness comes from the beam itself, so the patch moves with it
+  // not a painted gradient. this is the beam's image, projected through
+  // the lens onto whatever lies below. the further it travels the more
+  // it defocuses, and each wavelength lands a little apart, so colour
+  // appears at the edges of that image the way it does under real glass
   {
     vec2 hsC = vec2(uR * uShapeW, uR * uShapeH) * uScale;
     float below = (c.y - hsC.y) - q.y;
     if (below > 0.0 && uCaustic > 0.001) {
       float xn = (q.x - c.x) / hsC.x;
-      float span = hsC.y * 2.4 * uCaustic;
-      float k = clamp(below / max(span, 1e-4), 0.0, 1.0);   // fans as it falls
-      // an oval pool of light, not a band. wide, soft, and quiet
-      float widen = 1.0 + below / max(hsC.y, 1e-4) * 0.28;
-      float ex = xn / (1.15 * widen);
-      float ey = below / max(span * 0.85, 1e-4);
-      float oval = exp(-(ex * ex * 1.15 + ey * ey * 1.5));
-      // the beam decides how much light lands here, smoothed along x
-      float src = waveField(vec2(xn * 0.9, waveSpine(xn * 2.3, uTime)), uTime).g;
-      src = 0.45 + 0.55 * src;
-      col += spectral(k) * oval * src * uCaustic * 0.55;
+      float travel = below / max(hsC.y, 1e-4);          // in body heights
+      float defocus = 0.34 + travel * 0.85;             // spreads as it falls
+      float reach = exp(-travel * 0.55);                // and dims
+      float ends = smoothstep(1.45, 0.6, abs(xn));
+
+      vec3 acc = vec3(0.0), wsum = vec3(0.0);
+      for (int i = 0; i < 7; i++) {
+        float k = float(i) / 6.0;
+        // deflection grows with the distance travelled. that separation
+        // is the whole reason the fringe is coloured
+        float dk = (k - 0.5) * uDispersion * 11.0 * travel;
+        float srcX = xn + dk * 0.6;
+        float yw = waveSpine(srcX * 2.3, uTime);        // beam height, body units
+        float dy = (-1.0 - travel) - (yw - dk * 1.4);   // where its image lands
+        float prof = exp(-dy * dy / (defocus * defocus));
+        vec3 w = spectral(k) + 0.3;
+        acc += w * prof;
+        wsum += w;
+      }
+      col += acc / max(wsum, vec3(0.001)) * reach * ends * uCaustic * 1.15;
     }
   }
 
