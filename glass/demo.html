@@ -7,10 +7,23 @@
 <style>
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: crosshair; }
   canvas { display: block; width: 100vw; height: 100vh; }
+  #tune {
+    display: none; position: fixed; top: 20px; left: 20px; z-index: 5;
+    background: rgba(0,0,0,0.82); border: 1px solid rgba(255,255,255,0.18);
+    padding: 14px; width: 250px; max-height: 92vh; overflow: auto;
+    font: 11px ui-monospace, monospace; color: #fff; backdrop-filter: blur(8px);
+  }
+  #tune.on { display: block; }
+  #tune label { display: block; margin: 7px 0 1px; color: rgba(255,255,255,0.55); }
+  #tune input { width: 100%; accent-color: #fff; }
+  #tune .v { float: right; color: #fff; }
+  #tune .btn { margin-top: 12px; cursor: pointer; color: rgba(255,255,255,0.6); }
+  #tune .btn:hover { color: #fff; }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<div id="tune"></div>
 <script>
 // liquid glass. the ios 27 siri lens as one fragment shader:
 // refraction with chromatic split, a prismatic rim, a moving sheen.
@@ -51,13 +64,16 @@ uniform vec2 uRes;
 uniform float uTime;
 uniform vec2  uPan;      // background drift
 uniform float uScale;    // grows on hover
+uniform float uShapeW, uShapeH, uThick, uMagnify, uSlope, uDisp;
+uniform float uSmoke, uSmokePos, uWaveAmp, uWaveGirth, uWaveInt, uWaveSat;
+uniform float uRim, uTir, uShadow;
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uVel;       // lens velocity, squashes the bubble
 
 // a rectangle with rounded corners. exact sdf
 float lensField(vec2 q, vec2 c, float r) {
-  vec2 halfSize = vec2(r * 2.1, r * 0.72) * uScale;
+  vec2 halfSize = vec2(r * uShapeW, r * uShapeH) * uScale;
   float rad = halfSize.y;   // always half the height: clean semicircular ends
   vec2 d2 = abs(q - c) - (halfSize - rad);
   return length(max(d2, vec2(0.0))) + min(max(d2.x, d2.y), 0.0) - rad;
@@ -80,8 +96,8 @@ vec3 spectral(float k) {
 
 // the arc the light travels: one long sweep, crest left of centre
 float waveSpine(float x, float t) {
-  return 0.30 * sin(x * 0.95 + 1.9 + t * 0.22)
-       + 0.075 * sin(x * 2.10 - 0.6 - t * 0.15);
+  return uWaveAmp * sin(x * 0.95 + 1.9 + t * 0.22)
+       + uWaveAmp * 0.25 * sin(x * 2.10 - 0.6 - t * 0.15);
 }
 
 // the wave is a beam, not a stack of stripes. a white hot filament with
@@ -95,7 +111,7 @@ vec3 waveField(vec2 w, float t) {
   float dy = w.y - base;
 
   // the beam is fuller in the middle of its run and thins toward the caps
-  float girth = 0.16 + 0.085 * smoothstep(1.1, 0.0, abs(w.x + 0.15));
+  float girth = uWaveGirth + uWaveGirth * 0.53 * smoothstep(1.1, 0.0, abs(w.x + 0.15));
   float u = dy / girth;                       // 0 core, ±1 edge of the beam
   float au = abs(u);
 
@@ -104,7 +120,7 @@ vec3 waveField(vec2 w, float t) {
   vec3 hue = spectral(k);
 
   // colour takes over almost immediately off the filament
-  float sat = smoothstep(0.01, 0.22, au);
+  float sat = smoothstep(0.01, uWaveSat, au);
   vec3 tone = mix(vec3(1.0, 0.99, 0.97), hue, sat);
 
   // dense inside, long graceful tail outside
@@ -146,18 +162,18 @@ void main() {
     float dome = sqrt(max(0.0, 1.0 - t01 * t01));       // thickness profile
     // slope rises smoothly instead of standing up at the wall. a spike
     // there makes the background snap rather than flow
-    float slope = smoothstep(0.0, 1.0, t01) * t01 * 3.2;
+    float slope = smoothstep(0.0, 1.0, t01) * t01 * uSlope;
     vec3 N = normalize(vec3(n * slope, dome * 0.85 + 0.22));
     vec3 I = vec3(0.0, 0.0, -1.0);
 
-    float thick = 0.75 * uR * dome;
+    float thick = uThick * uR * dome;
     // three indices: glass splits the spectrum on its own
-    vec3 Rr = refract(I, N, 0.652);
+    vec3 Rr = refract(I, N, 0.662 - uDisp);
     vec3 Rg = refract(I, N, 0.662);
-    vec3 Rb = refract(I, N, 0.674);
+    vec3 Rb = refract(I, N, 0.662 + uDisp * 1.2);
 
     // thickness also magnifies what sits behind the middle
-    vec2 mid = vUv - (q - c) / vec2(aspect, 1.0) * 0.55 * dome;
+    vec2 mid = vUv - (q - c) / vec2(aspect, 1.0) * uMagnify * dome;
     vec2 pan = vec2(uPan.x, -uPan.y);
 
     vec2 ur = mid + Rr.xy / max(0.3, abs(Rr.z)) * thick / vec2(aspect, 1.0);
@@ -171,8 +187,8 @@ void main() {
 
     // the wave sits inside the body, so the refracted ray finds it and
     // it warps and splits along with everything else
-    float hwW = uR * 2.1 * uScale;
-    float hhW = uR * 0.72 * uScale;
+    float hwW = uR * uShapeW * uScale;
+    float hhW = uR * uShapeH * uScale;
     // it floats mid body, so it only takes a fraction of the full bend.
     // the whole path would fold it back on itself at the caps
     // the beam lives in the plane of the glass, not behind it. running it
@@ -184,16 +200,16 @@ void main() {
 
     // the body is smoked at the top and clears toward the bottom.
     // the fade sits just above center, where the wave will ride
-    float hh = uR * 0.72 * uScale;
+    float hh = uR * uShapeH * uScale;
     float up = (q.y - c.y) / hh;                 // -1 bottom, +1 top
     // wide and eased twice. a narrow ramp reads as an overlay, a long
     // one reads as tinted material. never fully black, the body keeps depth
-    float smoke = smoothstep(-0.95, 1.0, up);
+    float smoke = smoothstep(-0.95 + uSmokePos, 1.0 + uSmokePos, up);
     smoke = smoke * smoke * (3.0 - 2.0 * smoke);
     smoke = smoke * smoke * (3.0 - 2.0 * smoke);
-    col = mix(col, col * 0.10, smoke * 0.82);
+    col = mix(col, col * 0.10, smoke * uSmoke);
 
-    col += wv * 1.15;
+    col += wv * uWaveInt;
 
     // the only colour here comes from the dispersion above. no painted
     // spectrum: the reference keeps its rainbow in the wave, not the rim
@@ -210,7 +226,7 @@ void main() {
   float veil = smoothstep(0.55, 0.0, dCast) * outside;
   veil *= veil;
   float seam = smoothstep(0.014, 0.0, d) * outside;
-  col *= 1.0 - (veil * 0.16 + seam * seam * 0.12);
+  col *= 1.0 - (veil * uShadow + seam * seam * uShadow * 0.75);
 
   // the rim is not a stroke. it is the lit edge of a body with thickness:
   // a bright band where the surface turns into the light, fading to
@@ -231,14 +247,14 @@ void main() {
   float tir   = pow(down, 1.6);
 
   // the edge is lit by the wave behind it and carries its colour
-  float hwR = uR * 2.1 * uScale;
-  float hhR = uR * 0.72 * uScale;
+  float hwR = uR * uShapeW * uScale;
+  float hhR = uR * uShapeH * uScale;
   vec3 edgeLight = waveField(vec2((q.x - c.x) / hwR, (q.y - c.y) / hhR), uTime);
   float amt = clamp(max(max(edgeLight.r, edgeLight.g), edgeLight.b), 0.0, 1.0);
   vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), edgeLight / max(amt, 0.001), amt * 0.75);
 
-  col += rimCol * band * lit * 0.28;
-  col += rimCol * band * tir * 0.5;
+  col += rimCol * band * lit * uRim;
+  col += rimCol * band * tir * uTir;
   col += rimCol * wall * tir * 0.1;
   col += vec3(0.85, 0.9, 1.0) * wall * lit * 0.04;
   col += vec3(1.0) * band * 0.04;
@@ -276,6 +292,16 @@ const uRes = gl.getUniformLocation(prog, 'uRes');
 const uTime = gl.getUniformLocation(prog, 'uTime');
 const uPan = gl.getUniformLocation(prog, 'uPan');
 const uScale = gl.getUniformLocation(prog, 'uScale');
+
+// press D for the panel
+const DEFAULTS = {
+  shapeW: 2.10, shapeH: 0.72, thick: 0.75, magnify: 0.55, slope: 3.20, disp: 0.011,
+  smoke: 0.82, smokePos: 0.00, waveAmp: 0.30, waveGirth: 0.16, waveInt: 1.15,
+  waveSat: 0.22, rim: 0.28, tir: 0.50, shadow: 0.16
+};
+const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
+const U = {};
+for (const k in DEFAULTS) U[k] = gl.getUniformLocation(prog, 'u' + k[0].toUpperCase() + k.slice(1));
 const uLens = gl.getUniformLocation(prog, 'uLens');
 const uRU = gl.getUniformLocation(prog, 'uR');
 const uVel = gl.getUniformLocation(prog, 'uVel');
@@ -314,6 +340,7 @@ function frame(t) {
   scaleV += (scaleT - scale) * 0.14 - scaleV * 0.35;
   scale += scaleV;
   gl.uniform1f(uScale, scale);
+  for (const k in DEFAULTS) gl.uniform1f(U[k], P[k]);
   // the artwork drifts slowly, so its light-to-dark edge crosses the lens
   const T = t * 0.001;
   gl.uniform2f(uPan, 0.0, 0.0);
@@ -327,6 +354,45 @@ function frame(t) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+// ---- tuning panel ----
+const RANGES = {
+  shapeW: [0.5, 4, 0.05], shapeH: [0.2, 2, 0.02], thick: [0, 2.5, 0.01],
+  magnify: [0, 1.5, 0.01], slope: [0, 8, 0.05], disp: [0, 0.06, 0.001],
+  smoke: [0, 1, 0.01], smokePos: [-0.8, 0.8, 0.02], waveAmp: [0, 0.9, 0.01],
+  waveGirth: [0.02, 0.5, 0.005], waveInt: [0, 3, 0.02], waveSat: [0.02, 0.8, 0.01],
+  rim: [0, 1.5, 0.01], tir: [0, 1.5, 0.01], shadow: [0, 0.6, 0.01]
+};
+const panel = document.getElementById('tune');
+panel.innerHTML = Object.keys(RANGES).map(k => {
+  const [mn, mx, st] = RANGES[k];
+  return `<label>${k.toUpperCase()}<span class="v" id="v_${k}">${P[k]}</span></label>
+          <input type="range" id="i_${k}" min="${mn}" max="${mx}" step="${st}" value="${P[k]}">`;
+}).join('') + '<div class="btn" id="copy">COPY VALUES</div><div class="btn" id="reset">RESET</div>';
+
+for (const k in RANGES) {
+  document.getElementById('i_' + k).addEventListener('input', e => {
+    P[k] = parseFloat(e.target.value);
+    document.getElementById('v_' + k).textContent = P[k];
+    localStorage.setItem('glassTune', JSON.stringify(P));
+  });
+}
+document.getElementById('copy').addEventListener('click', () => {
+  navigator.clipboard.writeText(JSON.stringify(P));
+  document.getElementById('copy').textContent = 'COPIED';
+  setTimeout(() => { document.getElementById('copy').textContent = 'COPY VALUES'; }, 1200);
+});
+document.getElementById('reset').addEventListener('click', () => {
+  Object.assign(P, DEFAULTS);
+  localStorage.removeItem('glassTune');
+  for (const k in RANGES) {
+    document.getElementById('i_' + k).value = P[k];
+    document.getElementById('v_' + k).textContent = P[k];
+  }
+});
+addEventListener('keydown', e => {
+  if (e.key === 'd' || e.key === 'D') panel.classList.toggle('on');
+});
 </script>
 </body>
 </html>
