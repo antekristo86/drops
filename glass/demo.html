@@ -312,7 +312,7 @@ const uScale = gl.getUniformLocation(prog, 'uScale');
 const DEFAULTS = {
   shapeW: 2.10, shapeH: 0.72, thick: 0.75, magnify: 0.55, slope: 3.20, disp: 0.011,
   smoke: 0.82, smokePos: 0.00, waveAmp: 0.30, waveGirth: 0.16, waveInt: 1.15,
-  waveSat: 0.22, rim: 0.28, tir: 0.50, shadow: 0.16, rimTint: 1.10, waveBend: 0.55
+  waveSat: 0.22, rim: 0.28, tir: 0.50, shadow: 0.16, rimTint: 1.10, waveBend: 0.0
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
