@@ -23,35 +23,19 @@ const tex2d = document.createElement('canvas');
 const ctx = tex2d.getContext('2d');
 let dpr = 1;
 
+const bgImg = new Image();
+bgImg.src = './bg.png';
+bgImg.onload = () => resize();
+
 function drawBackground() {
   const w = tex2d.width, h = tex2d.height;
-  const g = ctx.createLinearGradient(0, 0, w, h);
-  g.addColorStop(0, '#2a2438');
-  g.addColorStop(0.5, '#171522');
-  g.addColorStop(1, '#0b0a12');
-  ctx.fillStyle = g;
+  ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, w, h);
-
-  // soft light blob top left
-  const r = ctx.createRadialGradient(w * 0.3, h * 0.2, 0, w * 0.3, h * 0.2, h * 0.9);
-  r.addColorStop(0, 'rgba(255,214,170,0.16)');
-  r.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = r;
-  ctx.fillRect(0, 0, w, h);
-
-  // clock
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
-  ctx.fillStyle = 'rgba(255,246,235,0.92)';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = `600 ${h * 0.3}px -apple-system, 'Helvetica Neue', sans-serif`;
-  ctx.fillText(`${hh}:${mm}`, w / 2, h * 0.42);
-  ctx.font = `500 ${h * 0.045}px -apple-system, 'Helvetica Neue', sans-serif`;
-  ctx.fillStyle = 'rgba(255,246,235,0.65)';
-  const date = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-  ctx.fillText(date, w / 2, h * 0.24);
+  if (!bgImg.complete || !bgImg.naturalWidth) return;
+  // cover fit
+  const s = Math.max(w / bgImg.naturalWidth, h / bgImg.naturalHeight);
+  const dw = bgImg.naturalWidth * s, dh = bgImg.naturalHeight * s;
+  ctx.drawImage(bgImg, (w - dw) / 2, (h - dh) / 2, dw, dh);
 }
 
 const vsSrc = `
@@ -174,7 +158,7 @@ const uRU = gl.getUniformLocation(prog, 'uR');
 const uVel = gl.getUniformLocation(prog, 'uVel');
 
 // step 1: the lens sits still, top center
-let lx = 0.5, ly = 0.82, vx = 0, vy = 0;
+let lx = 0.5, ly = 0.5, vx = 0, vy = 0;
 
 function resize() {
   dpr = Math.min(devicePixelRatio, 2);
