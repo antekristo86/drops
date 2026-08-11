@@ -205,22 +205,24 @@ void main() {
     vec2 base = vUv - (q - c) / vec2(aspect, 1.0) * mag;
     vec2 off  = dir * push * hs / vec2(aspect, 1.0);
 
-    // dispersion: each channel pushed a shade differently
-    float sR = 1.0 - uDispersion * 7.0;
-    float sB = 1.0 + uDispersion * 7.0;
-
-    // frost scatters the ray across a few taps
-    float fr = uFrost * 0.05;
+    // spectral spread: sample across a run of wavelengths and weight each
+    // by its colour. three channels at three offsets gives hard red and
+    // blue edges; a weighted fan gives the soft glow real glass has.
+    // note the minus: pushing the sample inward bulges the image outward
     vec3 acc3 = vec3(0.0);
-    for (int s2 = 0; s2 < 5; s2++) {
-      float a2 = float(s2) * 1.2566;
-      vec2 j = vec2(cos(a2), sin(a2)) * fr * (0.35 + 0.65 * float(s2) / 4.0);
-      acc3 += vec3(
-        texture2D(uTex, vec2(base.x + off.x * sR + j.x + uPan.x, 1.0 - (base.y + off.y * sR + j.y) + uPan.y)).r,
-        texture2D(uTex, vec2(base.x + off.x      + j.x + uPan.x, 1.0 - (base.y + off.y      + j.y) + uPan.y)).g,
-        texture2D(uTex, vec2(base.x + off.x * sB + j.x + uPan.x, 1.0 - (base.y + off.y * sB + j.y) + uPan.y)).b);
+    vec3 wsum = vec3(0.0);
+    for (int i = 0; i < 9; i++) {
+      float k = float(i) / 8.0;
+      float sc = 1.0 + uDispersion * 9.0 * (k - 0.5);
+      float a2 = float(i) * 0.698;
+      vec2 j = vec2(cos(a2), sin(a2)) * uFrost * 0.05 * (0.3 + 0.7 * k);
+      vec2 uvS = base - off * sc + j;
+      vec3 samp = texture2D(uTex, vec2(uvS.x + uPan.x, 1.0 - uvS.y + uPan.y)).rgb;
+      vec3 w = spectral(k) + 0.35;
+      acc3 += samp * w;
+      wsum += w;
     }
-    col = acc3 / 5.0;
+    col = acc3 / max(wsum, vec3(0.001));
 
     float depth = clamp(1.0 - r, 0.0, 1.0);
     float bend = r * r;
