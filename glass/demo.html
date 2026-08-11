@@ -276,10 +276,14 @@ void main() {
   // appears at the edges of that image the way it does under real glass
   {
     vec2 hsC = vec2(uR * uShapeW, uR * uShapeH) * uScale;
-    float below = (c.y - hsC.y - hsC.y * uCausticGap) - q.y;
-    if (below > 0.0 && uCaustic > 0.001) {
+    // the light leaves through the outline, so the patch follows the
+    // silhouette instead of falling as a flat band. that curve is what
+    // makes it read as glass rather than a gradient
+    float dOut = d - hsC.y * uCausticGap;
+    float downness = smoothstep(-0.15, 0.75, (c.y - q.y) / max(hsC.y, 1e-4));
+    if (dOut > 0.0 && downness > 0.001 && uCaustic > 0.001) {
       float xn = (q.x - c.x) / hsC.x;
-      float travel = below / max(hsC.y, 1e-4);          // in body heights
+      float travel = dOut / max(hsC.y, 1e-4);           // distance from the edge
       // size scales how wide and how far the patch reaches. it does not
       // touch travel, so the profile keeps its shape
       float defocus = (0.34 + travel * 0.85) * uCausticSize;
@@ -300,7 +304,7 @@ void main() {
         acc += w * prof;
         wsum += w;
       }
-      col += acc / max(wsum, vec3(0.001)) * reach * ends * uCaustic * 1.15;
+      col += acc / max(wsum, vec3(0.001)) * reach * ends * downness * uCaustic * 1.15;
     }
   }
 
@@ -493,7 +497,7 @@ const RANGES = {
   shadow: [0, 0.6, 0.01], rimTint: [0, 3, 0.05],
   waveFreq: [0.5, 8, 0.1], waveSpeed: [0, 2.5, 0.05],
   waveCore: [0.02, 0.5, 0.005], waveReach: [0.3, 12, 0.1], caustic: [0, 2, 0.02],
-  causticSize: [0.3, 3, 0.05], causticGap: [0, 2, 0.05]
+  causticSize: [0.3, 3, 0.05], causticGap: [-1.5, 2, 0.05]
 };
 const panel = document.getElementById('tune');
 panel.innerHTML = Object.keys(RANGES).map(k => {
