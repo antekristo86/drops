@@ -69,15 +69,15 @@ uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uVel;       // lens velocity, squashes the bubble
 
-// signed distance to the lens (slightly squashed by motion)
+// signed distance to the inflated slot: a superellipse, wider than tall,
+// sides bulging like a balloon under pressure
 float lensSDF(vec2 q, vec2 c, float r, vec2 vel) {
-  vec2 d = q - c;
-  float squash = clamp(length(vel) * 6.0, 0.0, 0.35);
-  vec2 dir = length(vel) > 0.0001 ? normalize(vel) : vec2(1.0, 0.0);
-  float along = dot(d, dir);
-  float across = dot(d, vec2(-dir.y, dir.x));
-  d = dir * along * (1.0 - squash * 0.5) + vec2(-dir.y, dir.x) * across * (1.0 + squash * 0.5);
-  return length(d) - r;
+  vec2 p = q - c;
+  float a = r * 1.38;         // half width
+  float b = r;                // half height
+  float n = 2.6;              // inflation. 2 = ellipse, higher = puffier
+  float v = pow(pow(abs(p.x / a), n) + pow(abs(p.y / b), n), 1.0 / n);
+  return (v - 1.0) * b;
 }
 
 vec3 hue(float t) {
@@ -95,7 +95,11 @@ void main() {
   if (d < 0.0) {
     // inside the lens: refract. strength peaks at the rim, calm center
     float depth = -d / uR;                       // 1 center, 0 rim
-    vec2 n = normalize(q - c + 1e-6);
+    float e = 0.002;
+    vec2 n = normalize(vec2(
+      lensSDF(q + vec2(e, 0.0), c, uR, uVel) - lensSDF(q - vec2(e, 0.0), c, uR, uVel),
+      lensSDF(q + vec2(0.0, e), c, uR, uVel) - lensSDF(q - vec2(0.0, e), c, uR, uVel)
+    ) + 1e-6);
     float bend = pow(1.0 - depth, 3.0);          // rim-heavy, calm center
     float mag = 0.09 * uR;                       // center magnification
 
