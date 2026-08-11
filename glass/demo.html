@@ -263,11 +263,10 @@ void main() {
   // glass casts, but barely: a wide low-density veil below the body and
   // a slightly denser seam at the contact edge. present, never a stain
   float outside = step(0.0, d);
-  // one broad soft shadow dropping below the body. no contact seam:
-  // a thin dark line at the edge reads as dirt, not as light
-  float dCast = lensField(q - vec2(0.0, -0.5 * uR), c, uR) / gm;
-  float veil = smoothstep(0.85, -0.05, dCast) * outside;
-  veil = veil * veil * (3.0 - 2.0 * veil);
+  // a normal drop shadow: small offset down, wide soft blur, very low
+  // density. an exponential falloff keeps it from reading as a cloud
+  float dCast = lensField(q - vec2(0.0, -0.22 * uR), c, uR) / gm;
+  float veil = exp(-max(dCast, 0.0) * 11.0) * outside;
   col *= 1.0 - veil * uShadow;
 
   // the rim is not a stroke. it is the lit edge of a body with thickness:
@@ -352,7 +351,7 @@ const DEFAULTS = {
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.90, smokePos: 0.00,
   waveAmp: 0.28, waveGirth: 0.185, waveInt: 0.95, waveSat: 0.08, waveBend: 0.45,
-  shadow: 0.28, rimTint: 0.45, waveFreq: 2.4, waveSpeed: 0.55
+  shadow: 0.14, rimTint: 0.45, waveFreq: 2.4, waveSpeed: 0.55
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
