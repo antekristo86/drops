@@ -117,11 +117,12 @@ void main() {
   // glass casts, but barely: a wide low-density veil below the body and
   // a slightly denser seam at the contact edge. present, never a stain
   float outside = step(0.0, d);
-  float dCast = lensField(q - vec2(0.0, -0.045 * uR), c, uR) / gm;
-  float veil = smoothstep(0.075, 0.0, dCast) * outside;
+  // a long, low veil falling well below the body, and a tight seam at contact
+  float dCast = lensField(q - vec2(0.0, -0.6 * uR), c, uR) / gm;
+  float veil = smoothstep(0.55, 0.0, dCast) * outside;
   veil *= veil;
   float seam = smoothstep(0.014, 0.0, d) * outside;
-  col *= 1.0 - (veil * 0.13 + seam * seam * 0.12);
+  col *= 1.0 - (veil * 0.16 + seam * seam * 0.12);
 
   // hairline rim
   float rim = smoothstep(0.0014, 0.0, abs(d));
