@@ -144,7 +144,10 @@ void main() {
 
     float t01 = 1.0 - depth;                     // 0 centre, 1 rim
     float dome = sqrt(max(0.0, 1.0 - t01 * t01));       // thickness profile
-    vec3 N = normalize(vec3(n * t01 * 2.6, dome + 0.06));
+    // slope rises smoothly instead of standing up at the wall. a spike
+    // there makes the background snap rather than flow
+    float slope = smoothstep(0.0, 1.0, t01) * t01 * 2.2;
+    vec3 N = normalize(vec3(n * slope, dome * 0.85 + 0.22));
     vec3 I = vec3(0.0, 0.0, -1.0);
 
     float thick = 0.42 * uR * dome;
@@ -172,13 +175,10 @@ void main() {
     float hhW = uR * 0.72 * uScale;
     // it floats mid body, so it only takes a fraction of the full bend.
     // the whole path would fold it back on itself at the caps
-    vec2 mr = mix(vUv, ur, 0.35);
-    vec2 mg = mix(vUv, ug, 0.35);
-    vec2 mb = mix(vUv, ub, 0.35);
-    vec3 wv = vec3(
-      waveField(vec2((mr.x * aspect - c.x) / hwW, (mr.y - c.y) / hhW), uTime).r,
-      waveField(vec2((mg.x * aspect - c.x) / hwW, (mg.y - c.y) / hhW), uTime).g,
-      waveField(vec2((mb.x * aspect - c.x) / hwW, (mb.y - c.y) / hhW), uTime).b);
+    // one sample. sampling per channel would print three offset copies
+    // of the beam, and the spectrum already lives inside the field
+    vec2 mw = mix(vUv, ug, 0.35);
+    vec3 wv = waveField(vec2((mw.x * aspect - c.x) / hwW, (mw.y - c.y) / hhW), uTime);
 
     // slight glass tint toward the rim
     col *= mix(1.0, 0.9, bend);
