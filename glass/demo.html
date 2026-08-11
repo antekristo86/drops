@@ -82,8 +82,11 @@ uniform float uFrost;                     // milkiness
 uniform float uSplay;                     // how sharply the rim flares
 // this piece specifically
 uniform float uShapeW, uShapeH, uSmoke, uSmokePos;
-uniform float uWaveAmp, uWaveGirth, uWaveInt, uWaveSat, uWaveBend;
-uniform float uShadow, uRimTint, uWaveFreq, uWaveSpeed, uWaveCore, uWaveReach, uCaustic, uCausticSize, uCausticGap;
+uniform float uWaveAmp, uWaveFreq, uWaveSpeed, uWaveInt, uWaveBend;
+// the lobes: how tall each one is, how far apart they sit, how long they
+// run and how far they wander along that run
+uniform float uLobeH, uLobeGap, uLobeW, uLobeDrift;
+uniform float uShadow, uRimTint, uCaustic, uCausticSize, uCausticGap;
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uVel;       // lens velocity, squashes the bubble
@@ -161,14 +164,14 @@ vec3 waveField(vec2 w, float t) {
     float s  = k - 0.5;
 
     // where along the run this colour is sitting right now
-    float cx  = 0.80 * sin(t * (0.13 + 0.045 * fi) + fi * 2.1);
-    float wd  = 0.80 + 0.30 * sin(fi * 1.7);
+    float cx  = uLobeDrift * sin(t * (0.13 + 0.045 * fi) + fi * 2.1);
+    float wd  = uLobeW * (1.0 + 0.35 * sin(fi * 1.7));
     float env = exp(-pow((w.x - cx) / wd, 2.0));
 
     float y = waveSpine(w.x * 2.3 + s * 0.80, t) * (1.0 + s * 0.18)
-            + s * uWaveReach * uWaveGirth * 2.4;
+            + s * uLobeGap * uLobeH * 2.4;
 
-    float g  = uWaveGirth * face * per * (1.7 + 0.5 * sin(fi * 2.3));
+    float g  = uLobeH * face * per * (1.7 + 0.5 * sin(fi * 2.3));
     float dy = (w.y - y * per) / max(g, 1e-4);
 
     float a = exp(-dy * dy) * env * run * per;
@@ -421,8 +424,9 @@ const DEFAULTS = {
   lightAngle: 2.0, lightPower: 0.8, refraction: 0.85, depth: 1.0,
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.55, smokePos: 0.00,
-  waveAmp: 0.32, waveGirth: 0.13, waveInt: 2.2, waveSat: 0.08, waveBend: 0.45,
-  shadow: 0.14, rimTint: 0.45, waveFreq: 1.25, waveSpeed: 0.45, waveCore: 0.060, waveReach: 2.0, caustic: 0.5, causticSize: 1.0, causticGap: 0.0
+  waveAmp: 0.32, waveFreq: 1.25, waveSpeed: 0.45, waveInt: 2.2, waveBend: 0.45,
+  lobeH: 0.13, lobeGap: 2.0, lobeW: 0.80, lobeDrift: 0.80,
+  shadow: 0.14, rimTint: 0.45, caustic: 0.5, causticSize: 1.0, causticGap: 0.0
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
@@ -518,11 +522,12 @@ const RANGES = {
   depth: [0, 2, 0.02], dispersion: [0, 0.06, 0.001], frost: [0, 1, 0.01],
   splay: [1.5, 10, 0.1],
   shapeW: [0.5, 4, 0.05], shapeH: [0.2, 2, 0.02], smoke: [0, 1, 0.01],
-  smokePos: [-0.8, 0.8, 0.02], waveAmp: [0, 0.9, 0.01], waveGirth: [0.02, 0.5, 0.005],
-  waveInt: [0, 3, 0.02], waveSat: [0.02, 0.8, 0.01], waveBend: [0, 2, 0.05],
-  shadow: [0, 0.6, 0.01], rimTint: [0, 3, 0.05],
-  waveFreq: [0.5, 8, 0.1], waveSpeed: [0, 2.5, 0.05],
-  waveCore: [0.02, 0.5, 0.005], waveReach: [0.3, 12, 0.1], caustic: [0, 2, 0.02],
+  smokePos: [-0.8, 0.8, 0.02],
+  waveAmp: [0, 0.9, 0.01], waveFreq: [0.5, 8, 0.1], waveSpeed: [0, 2.5, 0.05],
+  waveInt: [0, 4, 0.02], waveBend: [0, 2, 0.05],
+  lobeH: [0.02, 0.5, 0.005], lobeGap: [0.2, 6, 0.05],
+  lobeW: [0.2, 2.5, 0.05], lobeDrift: [0, 2, 0.02],
+  shadow: [0, 0.6, 0.01], rimTint: [0, 3, 0.05], caustic: [0, 2, 0.02],
   causticSize: [0.3, 3, 0.05], causticGap: [-1.5, 2, 0.05]
 };
 const panel = document.getElementById('tune');
