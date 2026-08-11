@@ -139,41 +139,32 @@ float waveSpine(float x, float t) {
   return uWaveAmp * (a + b) * 0.9 * breathe;
 }
 
-// not one curve with a spectrum painted across it. that is a gradient
-// wearing a wave costume, and it never behaves like light.
-// seven strands, one per colour, each its own wave: own phase, own speed,
-// own amplitude. they cross instead of running in formation. white is
-// where several cross at once, colour is where one runs alone.
-// each strand is a spindle, fat where it runs through the middle and gone
-// at the caps, so the band as a whole reads as a lens, not a stripe
+// ONE ribbon, not seven snakes. the strands run together and split only
+// slightly: same wave, a touch of lag and lift per wavelength. that split
+// is the spectrum, blue riding high, red hanging low, white where they
+// still overlap. the ribbon twists along its run like a flag and swings
+// in depth, so it swells and thins. the spindle falls out of that
 vec3 waveField(vec2 w, float t) {
   float ends = smoothstep(1.34, 0.30, abs(w.x));
   if (ends <= 0.001) return vec3(0.0);
 
+  float tw   = sin(w.x * 1.4 - t * uWaveSpeed * 0.55);
+  float face = 0.30 + 0.70 * abs(tw);            // 0 edge-on, 1 face-on
+  float z    = sin(w.x * 0.9 - t * uWaveSpeed * 0.33 + 1.7);
+  float per  = 1.0 / (1.0 + z * 0.30);           // nearer is bigger
+  float run  = smoothstep(1.34, 0.42, abs(w.x)); // the ribbon has ends
+  float wide = face * per * run;
+
   vec3 acc = vec3(0.0);
   for (int i = 0; i < 7; i++) {
-    float fi = float(i);
-    float k  = fi / 6.0;                       // 0 red, 1 blue
+    float k = float(i) / 6.0;                    // 0 red, 1 blue
+    float s = k - 0.5;
 
-    float ph  = fi * 1.73;
-    float sp  = uWaveSpeed * (0.70 + 0.10 * fi);
-    float amp = uWaveAmp   * (0.60 + 0.40 * sin(fi * 2.4 + 1.1));
-    float fr  = uWaveFreq  * (0.80 + 0.10 * fi);
-    float y   = amp * (sin(w.x * 2.3 * fr - t * sp + ph)
-                     + 0.18 * sin(w.x * 4.6 * fr + t * sp * 0.6 + ph))
-              + (k - 0.5) * uWaveReach * uWaveGirth;
+    // small deviations only. one ribbon splitting, not seven errands
+    float y = waveSpine(w.x * 2.3 + s * 0.40, t) * (1.0 + s * 0.10)
+            + s * uWaveReach * uWaveGirth;
 
-    // the strand is a ribbon in space, not a line on a plane. it twists
-    // along its run like a flag, turning face-on and edge-on, and it swings
-    // in depth, so it swells coming forward and thins going back. the
-    // spindle falls out of that. it is not a shape anyone drew
-    float tw   = sin(w.x * 1.5 * fr - t * sp * 0.7 + ph * 0.6);
-    float face = 0.16 + 0.84 * abs(tw);            // 0 edge-on, 1 face-on
-    float z    = sin(w.x * 1.1 - t * sp * 0.45 + ph);
-    float per  = 1.0 / (1.0 + z * 0.42);           // nearer is bigger
-    float run  = smoothstep(1.34, 0.55, abs(w.x)); // the ribbon has ends
-
-    float g  = uWaveGirth * face * per * (0.40 + 0.80 * run);
+    float g  = uWaveGirth * wide * (0.85 + 0.40 * k);
     float dy = (w.y - y * per) / max(g, 1e-4);
 
     vec3 tone = mix(vec3(1.0, 0.99, 0.97), spectral(k), min(uWaveSat * 12.0, 1.0));
@@ -418,8 +409,8 @@ const DEFAULTS = {
   lightAngle: 2.0, lightPower: 0.8, refraction: 0.85, depth: 1.0,
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.90, smokePos: 0.00,
-  waveAmp: 0.42, waveGirth: 0.16, waveInt: 1.0, waveSat: 0.08, waveBend: 0.45,
-  shadow: 0.14, rimTint: 0.45, waveFreq: 1.30, waveSpeed: 0.45, waveCore: 0.060, waveReach: 2.0, caustic: 0.5, causticSize: 1.0, causticGap: 0.0
+  waveAmp: 0.32, waveGirth: 0.16, waveInt: 1.0, waveSat: 0.08, waveBend: 0.45,
+  shadow: 0.14, rimTint: 0.45, waveFreq: 1.05, waveSpeed: 0.45, waveCore: 0.060, waveReach: 2.0, caustic: 0.5, causticSize: 1.0, causticGap: 0.0
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
