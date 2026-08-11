@@ -66,7 +66,7 @@ uniform vec2  uPan;      // background drift
 uniform float uScale;    // grows on hover
 uniform float uShapeW, uShapeH, uThick, uMagnify, uSlope, uDisp;
 uniform float uSmoke, uSmokePos, uWaveAmp, uWaveGirth, uWaveInt, uWaveSat;
-uniform float uRim, uTir, uShadow, uRimTint;
+uniform float uRim, uTir, uShadow, uRimTint, uWaveBend;
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uVel;       // lens velocity, squashes the bubble
@@ -191,9 +191,13 @@ void main() {
     float hhW = uR * uShapeH * uScale;
     // it floats mid body, so it only takes a fraction of the full bend.
     // the whole path would fold it back on itself at the caps
-    // the beam lives in the plane of the glass, not behind it. running it
-    // through the bend tears it wherever the displacement changes fast
-    vec3 wv = waveField(vec2((q.x - c.x) / hwW, (q.y - c.y) / hhW), uTime);
+    // the beam sits behind the glass, so the same bend carries it. push
+    // this too far and it tears where the displacement jumps, so the
+    // amount is a dial
+    vec2 bendUV = Rg.xy / max(0.3, abs(Rg.z)) * thick;
+    vec2 wpos = vec2((q.x - c.x) / hwW, (q.y - c.y) / hhW);
+    wpos += vec2(bendUV.x / hwW, bendUV.y / hhW) * uWaveBend;
+    vec3 wv = waveField(wpos, uTime);
 
     // slight glass tint toward the rim
     col *= mix(1.0, 0.9, bend);
@@ -308,7 +312,7 @@ const uScale = gl.getUniformLocation(prog, 'uScale');
 const DEFAULTS = {
   shapeW: 2.10, shapeH: 0.72, thick: 0.75, magnify: 0.55, slope: 3.20, disp: 0.011,
   smoke: 0.82, smokePos: 0.00, waveAmp: 0.30, waveGirth: 0.16, waveInt: 1.15,
-  waveSat: 0.22, rim: 0.28, tir: 0.50, shadow: 0.16, rimTint: 1.10
+  waveSat: 0.22, rim: 0.28, tir: 0.50, shadow: 0.16, rimTint: 1.10, waveBend: 0.55
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
@@ -372,7 +376,7 @@ const RANGES = {
   magnify: [0, 1.5, 0.01], slope: [0, 8, 0.05], disp: [0, 0.06, 0.001],
   smoke: [0, 1, 0.01], smokePos: [-0.8, 0.8, 0.02], waveAmp: [0, 0.9, 0.01],
   waveGirth: [0.02, 0.5, 0.005], waveInt: [0, 3, 0.02], waveSat: [0.02, 0.8, 0.01],
-  rim: [0, 1.5, 0.01], tir: [0, 1.5, 0.01], shadow: [0, 0.6, 0.01], rimTint: [0, 3, 0.05]
+  rim: [0, 1.5, 0.01], tir: [0, 1.5, 0.01], shadow: [0, 0.6, 0.01], rimTint: [0, 3, 0.05], waveBend: [0, 2, 0.05]
 };
 const panel = document.getElementById('tune');
 panel.innerHTML = Object.keys(RANGES).map(k => {
