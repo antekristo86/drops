@@ -114,22 +114,11 @@ void main() {
     col += vec3(1.0) * band * smoothstep(0.45, 1.0, topness) * 0.18;
   }
 
-  // shadow. light sits above, so the body throws down and back.
-  // two layers: a wide soft cast with a quadratic falloff, and a tight
-  // contact shadow where no light can reach around the edge.
-  // multiplied into the plate, so it darkens the color instead of
-  // laying grey on top
+  // glass barely casts. all that survives is a whisper of darkening
+  // hugging the outer edge, where the body bends light away from the plate
   float outside = step(0.0, d);
-  vec2 castOff = vec2(0.0, -0.09 * uR);
-  float dCast = lensField(q - castOff, c, uR) / gm;
-
-  float penumbra = smoothstep(0.11 * uR / 0.13, -0.01, dCast) * outside;
-  penumbra *= penumbra;                       // quadratic, no flat halo
-
-  float contact = smoothstep(0.02, 0.0, d) * outside;
-  contact *= contact;
-
-  col *= 1.0 - (penumbra * 0.42 + contact * 0.35);
+  float seam = smoothstep(0.012, 0.0, d) * outside;
+  col *= 1.0 - seam * seam * 0.22;
 
   // hairline rim
   float rim = smoothstep(0.0014, 0.0, abs(d));
