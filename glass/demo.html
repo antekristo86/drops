@@ -74,7 +74,7 @@ uniform float uSplay;                     // how sharply the rim flares
 // this piece specifically
 uniform float uShapeW, uShapeH, uSmoke, uSmokePos;
 uniform float uWaveAmp, uWaveGirth, uWaveInt, uWaveSat, uWaveBend;
-uniform float uShadow, uRimTint;
+uniform float uShadow, uRimTint, uWaveFreq, uWaveSpeed;
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uVel;       // lens velocity, squashes the bubble
@@ -117,10 +117,16 @@ vec3 spectral(float k) {
   return   mix(dq,   blue,   smoothstep(0.80, 1.00, k));
 }
 
-// the arc the light travels: one long sweep, crest left of centre
+// a travelling wave, not a static arc. two components move at
+// different speeds so crests drift and meet instead of marching, and
+// the whole thing breathes
 float waveSpine(float x, float t) {
-  return uWaveAmp * sin(x * 0.95 + 1.9 + t * 0.22)
-       + uWaveAmp * 0.25 * sin(x * 2.10 - 0.6 - t * 0.15);
+  float ph = t * uWaveSpeed;
+  float a = sin(x * uWaveFreq - ph);
+  float b = sin(x * uWaveFreq * 0.61 + ph * 0.73 + 1.1) * 0.55;
+  float c = sin(x * uWaveFreq * 1.7 - ph * 1.4 + 2.3) * 0.22;
+  float breathe = 0.78 + 0.22 * sin(t * 0.45);
+  return uWaveAmp * (a + b + c) * 0.62 * breathe;
 }
 
 // the wave is a beam, not a stack of stripes. a white hot filament with
@@ -335,7 +341,7 @@ const DEFAULTS = {
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.90, smokePos: 0.00,
   waveAmp: 0.28, waveGirth: 0.185, waveInt: 0.95, waveSat: 0.08, waveBend: 0.45,
-  shadow: 0.28, rimTint: 0.45
+  shadow: 0.28, rimTint: 0.45, waveFreq: 2.4, waveSpeed: 0.55
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
@@ -401,7 +407,8 @@ const RANGES = {
   shapeW: [0.5, 4, 0.05], shapeH: [0.2, 2, 0.02], smoke: [0, 1, 0.01],
   smokePos: [-0.8, 0.8, 0.02], waveAmp: [0, 0.9, 0.01], waveGirth: [0.02, 0.5, 0.005],
   waveInt: [0, 3, 0.02], waveSat: [0.02, 0.8, 0.01], waveBend: [0, 2, 0.05],
-  shadow: [0, 0.6, 0.01], rimTint: [0, 3, 0.05]
+  shadow: [0, 0.6, 0.01], rimTint: [0, 3, 0.05],
+  waveFreq: [0.5, 8, 0.1], waveSpeed: [0, 2.5, 0.05]
 };
 const panel = document.getElementById('tune');
 panel.innerHTML = Object.keys(RANGES).map(k => {
