@@ -423,7 +423,7 @@ function frame(t) {
   const now = performance.now();
   last = now;
 
-  scaleV += (scaleT - scale) * 0.14 - scaleV * 0.35;
+  scaleV += (scaleT - scale) * 0.045 - scaleV * 0.26;
   scale += scaleV;
   gl.uniform1f(uScale, scale);
   for (const k in DEFAULTS) gl.uniform1f(U[k], P[k]);
