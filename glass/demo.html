@@ -134,9 +134,9 @@ float waveSpine(float x, float t) {
   // one clean wave with its own octave on top. simple ratios read as
   // harmony; incommensurate ones never repeat and read as noise
   float a = sin(x * uWaveFreq - ph);
-  float b = sin(x * uWaveFreq * 2.0 + ph * 0.5 + 0.8) * 0.28;
-  float breathe = 0.86 + 0.14 * sin(t * 0.31);
-  return uWaveAmp * (a + b) * 0.78 * breathe;
+  float b = sin(x * uWaveFreq * 2.0 + ph * 0.5 + 0.8) * 0.16;
+  float breathe = 0.90 + 0.10 * sin(t * 0.31);
+  return uWaveAmp * (a + b) * 0.9 * breathe;
 }
 
 // the wave is a beam, not a stack of stripes. a white hot filament with
@@ -152,7 +152,7 @@ vec3 waveField(vec2 w, float t) {
   // the beam is fuller in the middle of its run and thins toward the caps
   // the fan opens and closes along the run, so the bands drift against
   // each other instead of travelling as one rigid ribbon
-  float breath = 1.0 + 0.20 * sin(w.x * 1.6 - t * 0.34) + 0.09 * sin(w.x * 3.1 + t * 0.21);
+  float breath = 1.0 + 0.10 * sin(w.x * 1.5 - t * 0.30) + 0.04 * sin(w.x * 3.0 + t * 0.19);
   float girth = (uWaveGirth + uWaveGirth * 0.53 * smoothstep(1.1, 0.0, abs(w.x + 0.15))) * breath;
   float u = dy / girth;                       // 0 core, ±1 edge of the beam
   float au = abs(u);
@@ -280,13 +280,15 @@ void main() {
       float xn = (q.x - c.x) / hsC.x;
       float span = hsC.y * 2.4 * uCaustic;
       float k = clamp(below / max(span, 1e-4), 0.0, 1.0);   // fans as it falls
-      float fall = exp(-below / max(span * 0.55, 1e-4));
-      // the patch widens on the way down, and dies past the caps
-      float widen = 1.0 + below / max(hsC.y, 1e-4) * 0.35;
-      float across = smoothstep(1.3 * widen, 0.55 * widen, abs(xn));
-      // how bright the beam is at this x decides what lands here
-      float src = waveField(vec2(xn * 0.95, waveSpine(xn * 2.3, uTime)), uTime).g;
-      col += spectral(k) * fall * across * src * uCaustic * 1.6;
+      // an oval pool of light, not a band. wide, soft, and quiet
+      float widen = 1.0 + below / max(hsC.y, 1e-4) * 0.28;
+      float ex = xn / (1.15 * widen);
+      float ey = below / max(span * 0.85, 1e-4);
+      float oval = exp(-(ex * ex * 1.15 + ey * ey * 1.5));
+      // the beam decides how much light lands here, smoothed along x
+      float src = waveField(vec2(xn * 0.9, waveSpine(xn * 2.3, uTime)), uTime).g;
+      src = 0.45 + 0.55 * src;
+      col += spectral(k) * oval * src * uCaustic * 0.55;
     }
   }
 
@@ -378,7 +380,7 @@ const DEFAULTS = {
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.90, smokePos: 0.00,
   waveAmp: 0.28, waveGirth: 0.185, waveInt: 0.95, waveSat: 0.08, waveBend: 0.45,
-  shadow: 0.14, rimTint: 0.45, waveFreq: 2.4, waveSpeed: 0.55, waveCore: 0.105, waveReach: 2.8, caustic: 0.45
+  shadow: 0.14, rimTint: 0.45, waveFreq: 0.9, waveSpeed: 0.45, waveCore: 0.105, waveReach: 2.8, caustic: 0.5
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
