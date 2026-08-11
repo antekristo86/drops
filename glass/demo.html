@@ -139,47 +139,42 @@ float waveSpine(float x, float t) {
   return uWaveAmp * (a + b) * 0.9 * breathe;
 }
 
-// the wave is a beam, not a stack of stripes. a white hot filament with
-// the spectrum fanning off it: warm above, cool below. dense at the
-// core, graceful as it thins out. everything here is additive light
+// not one curve with a spectrum painted across it. that is a gradient
+// wearing a wave costume, and it never behaves like light.
+// this is a stack of strands, one per wavelength, each running the same
+// wave at its own offset and phase. where they agree they pile up into
+// white, where they drift apart the spectrum opens. the white core and
+// the colour order are consequences, not paint
 vec3 waveField(vec2 w, float t) {
   float ends = smoothstep(1.32, 0.25, abs(w.x));
   if (ends <= 0.001) return vec3(0.0);
 
-  float base = waveSpine(w.x * 2.3, t);
-  float dy = w.y - base;
+  vec3 acc = vec3(0.0);
+  for (int i = 0; i < 9; i++) {
+    float k = float(i) / 8.0;                  // 0 red, 1 blue
+    float s = k - 0.5;
 
-  // the beam is fuller in the middle of its run and thins toward the caps
-  // the fan opens and closes along the run, so the bands drift against
-  // each other instead of travelling as one rigid ribbon
-  float breath = 1.0 + 0.10 * sin(w.x * 1.5 - t * 0.30) + 0.04 * sin(w.x * 3.0 + t * 0.19);
-  float girth = (uWaveGirth + uWaveGirth * 0.53 * smoothstep(1.1, 0.0, abs(w.x + 0.15))) * breath;
-  float u = dy / girth;                       // 0 core, ±1 edge of the beam
-  float au = abs(u);
+    // each strand lags the next a touch, and breathes on its own clock.
+    // that is what makes the fan open and close instead of marching
+    float ph  = s * 0.55 + 0.10 * sin(t * 0.23 + k * 4.1);
+    float sep = uWaveReach * uWaveGirth * 1.50;
+    float amp = 1.0 + s * 0.12;
+    float base = waveSpine(w.x * 2.3 + ph, t) * amp - s * sep;
 
-  // wavelength by direction: red at the top, blue at the bottom. the whole
-  // spectrum lives in a narrow band, the way a thin film splits light
-  float k = clamp(0.5 - u * 0.60 + 0.04 * sin(t * 0.2), 0.0, 1.0);
-  vec3 hue = spectral(k);
+    // blue runs wider than red. tight edge on top, soft spill underneath,
+    // without a separate bloom term faking it
+    float g = uWaveGirth * (0.30 + 0.35 * k);
+    float dy = (w.y - base) / g;
 
-  // colour takes over almost immediately off the filament
-  float sat = smoothstep(0.01, uWaveSat, au);
-  vec3 tone = mix(vec3(1.0, 0.99, 0.97), hue, sat);
+    vec3 tone = mix(vec3(1.0, 0.99, 0.97), spectral(k), uWaveSat * 12.0);
+    acc += tone * exp(-dy * dy);
+  }
+  acc *= 0.30;
 
-  // the ribbon is not symmetric. above the red edge it stops dead; below
-  // the blue it spills into a wide pale bloom. a symmetric falloff smears
-  // red over everything above and the whole thing turns to brown wash
-  float above = max(u, 0.0);
-  float below = max(-u, 0.0);
-  // flat through the middle, quick shoulders. a plain gaussian peaks at the
-  // filament and falls away at once, which reads as a wire, not a ribbon
-  float band  = exp(-pow(au, 2.6) * 1.25) * exp(-above * above * 1.1);
-  float bloom = exp(-below * below * uWaveReach * 0.11);
-  float core  = exp(-u * u / max(uWaveCore * uWaveCore, 1e-5));
+  // the filament: where the strands cross, one hot white line
+  float dc = (w.y - waveSpine(w.x * 2.3, t)) / max(uWaveCore, 1e-4);
+  acc += vec3(1.0, 0.99, 0.97) * exp(-dc * dc) * 0.35;
 
-  vec3 acc = tone * band * 1.25;
-  acc += vec3(1.00, 0.99, 0.98) * bloom * 0.20;
-  acc += vec3(1.0, 0.99, 0.97) * core * 0.9;
   return acc * ends;
 }
 
@@ -249,7 +244,10 @@ void main() {
     // same sign as the background, or the two bends cancel and the beam
     // reads as if it were sitting on top of the glass
     vec2 wpos = u - dir * push * uWaveBend * 2.2;
-    vec3 wv = waveField(wpos, uTime);
+    // the beam dies before the wall. right at the rim the bend is at its
+    // hardest, and it drags the whole spectrum along the edge: the rim
+    // lights up where there is no light to begin with
+    vec3 wv = waveField(wpos, uTime) * smoothstep(1.0, 0.74, r);
 
     // slight glass tint toward the rim
     col *= mix(1.0, 0.9, bend);
@@ -408,8 +406,8 @@ const DEFAULTS = {
   lightAngle: 2.0, lightPower: 0.8, refraction: 0.85, depth: 1.0,
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.90, smokePos: 0.00,
-  waveAmp: 0.28, waveGirth: 0.30, waveInt: 1.0, waveSat: 0.08, waveBend: 0.45,
-  shadow: 0.14, rimTint: 0.45, waveFreq: 0.9, waveSpeed: 0.45, waveCore: 0.105, waveReach: 2.2, caustic: 0.5, causticSize: 1.0, causticGap: 0.0
+  waveAmp: 0.28, waveGirth: 0.15, waveInt: 1.0, waveSat: 0.08, waveBend: 0.45,
+  shadow: 0.14, rimTint: 0.45, waveFreq: 0.9, waveSpeed: 0.45, waveCore: 0.060, waveReach: 2.2, caustic: 0.5, causticSize: 1.0, causticGap: 0.0
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
