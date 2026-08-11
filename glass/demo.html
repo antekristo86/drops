@@ -162,18 +162,17 @@ vec3 waveField(vec2 w, float t) {
 
     // small deviations only. one ribbon splitting, not seven errands
     float y = waveSpine(w.x * 2.3 + s * 0.40, t) * (1.0 + s * 0.10)
-            + s * uWaveReach * uWaveGirth * 1.9;
+            + s * uWaveReach * uWaveGirth * 1.25;
 
-    // the two outermost wavelengths bound the band. they run thin and
-    // burn hard, and they are what you read as its edge. the ones between
-    // them are wide and faint, so the body stays translucent and the only
-    // glare is where all of them pile up. paper, not a painted stripe
-    float rim = abs(s) * 2.0;                    // 0 middle, 1 outermost
-    float g   = uWaveGirth * wide * (0.30 + 0.55 * (1.0 - rim));
-    float dy  = (w.y - y * per) / max(g, 1e-4);
+    // every strand the same weight and wide enough to touch its neighbours.
+    // weighting the outer ones harder turns them into two lone hairlines
+    // with mud between. the glare in the middle is not painted either: it
+    // is simply where the most strands overlap
+    float g  = uWaveGirth * wide * (0.90 + 0.25 * k);
+    float dy = (w.y - y * per) / max(g, 1e-4);
 
     vec3 tone = mix(vec3(1.0, 0.99, 0.97), spectral(k), min(uWaveSat * 12.0, 1.0));
-    acc += tone * exp(-dy * dy) * (0.40 + 0.75 * rim) * per * run;
+    acc += tone * exp(-dy * dy) * per * run;
   }
 
   return acc * 0.42 * ends;
@@ -422,7 +421,7 @@ const DEFAULTS = {
   lightAngle: 2.0, lightPower: 0.8, refraction: 0.85, depth: 1.0,
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.90, smokePos: 0.00,
-  waveAmp: 0.32, waveGirth: 0.13, waveInt: 1.5, waveSat: 0.08, waveBend: 0.45,
+  waveAmp: 0.32, waveGirth: 0.16, waveInt: 1.5, waveSat: 0.08, waveBend: 0.45,
   shadow: 0.14, rimTint: 0.45, waveFreq: 1.25, waveSpeed: 0.45, waveCore: 0.060, waveReach: 1.45, caustic: 0.5, causticSize: 1.0, causticGap: 0.0
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
