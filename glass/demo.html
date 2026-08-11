@@ -84,24 +84,37 @@ float waveSpine(float x, float t) {
        + 0.030 * sin(x * 2.10 - 0.6 - t * 0.15);
 }
 
-// the wave as a light field. every wavelength rides the same arc but
-// sits a little lower and tilts a little more, so the band fans open
-// and the overlap burns white. the rainbow is that separation, it is
-// not painted on
+// the wave is a beam, not a stack of stripes. a white hot filament with
+// the spectrum fanning off it: warm above, cool below. dense at the
+// core, graceful as it thins out. everything here is additive light
 vec3 waveField(vec2 w, float t) {
-  float ends = smoothstep(1.3, 0.3, abs(w.x));
+  float ends = smoothstep(1.32, 0.25, abs(w.x));
   if (ends <= 0.001) return vec3(0.0);
+
   float base = waveSpine(w.x * 2.3, t);
-  vec3 acc = vec3(0.0);
-  for (int i = 0; i < 13; i++) {
-    float k = float(i) / 12.0;
-    float off  = (k - 0.5) * 0.20;                  // fan open vertically
-    float tilt = (k - 0.5) * 0.17 * (w.x + 0.35);   // and diverge to the right
-    float dy = w.y - (base + off + tilt);
-    float wd = 0.105;                               // equal width, no band stands out
-    acc += spectral(k) * exp(-dy * dy / (wd * wd));
-  }
-  return acc / 7.0 * ends;
+  float dy = w.y - base;
+
+  // the beam is fuller in the middle of its run and thins toward the caps
+  float girth = 0.10 + 0.055 * smoothstep(1.1, 0.0, abs(w.x + 0.15));
+  float u = dy / girth;                       // 0 core, ±1 edge of the beam
+  float au = abs(u);
+
+  // wavelength by direction: gold rising off the top, cyan sinking below
+  float k = clamp(0.5 - u * 0.42 + 0.04 * sin(t * 0.2), 0.0, 1.0);
+  vec3 hue = spectral(k);
+
+  // colour takes over almost immediately off the filament
+  float sat = smoothstep(0.02, 0.34, au);
+  vec3 tone = mix(vec3(1.0, 0.99, 0.97), hue, sat);
+
+  // dense inside, long graceful tail outside
+  float bodyG = exp(-u * u * 1.15);
+  float tail  = 0.34 / (1.0 + au * au * 2.8);
+  float core  = exp(-u * u * 90.0);
+
+  vec3 acc = tone * (bodyG * 0.9 + tail * 0.5);
+  acc += vec3(1.0, 0.99, 0.97) * core * 0.5;
+  return acc * ends;
 }
 
 void main() {
