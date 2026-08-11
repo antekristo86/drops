@@ -175,10 +175,9 @@ void main() {
     float hhW = uR * 0.72 * uScale;
     // it floats mid body, so it only takes a fraction of the full bend.
     // the whole path would fold it back on itself at the caps
-    // one sample. sampling per channel would print three offset copies
-    // of the beam, and the spectrum already lives inside the field
-    vec2 mw = mix(vUv, ug, 0.35);
-    vec3 wv = waveField(vec2((mw.x * aspect - c.x) / hwW, (mw.y - c.y) / hhW), uTime);
+    // the beam lives in the plane of the glass, not behind it. running it
+    // through the bend tears it wherever the displacement changes fast
+    vec3 wv = waveField(vec2((q.x - c.x) / hwW, (q.y - c.y) / hhW), uTime);
 
     // slight glass tint toward the rim
     col *= mix(1.0, 0.9, bend);
