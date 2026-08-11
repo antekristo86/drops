@@ -82,10 +82,14 @@ uniform float uFrost;                     // milkiness
 uniform float uSplay;                     // how sharply the rim flares
 // this piece specifically
 uniform float uShapeW, uShapeH, uSmoke, uSmokePos;
-uniform float uWaveAmp, uWaveFreq, uWaveSpeed, uWaveInt, uWaveBend;
-// the lobes: how tall each one is, how far apart they sit, how long they
-// run and how far they wander along that run
-uniform float uLobeH, uLobeGap, uLobeW, uLobeDrift;
+// the band: how far it tilts, how much it sways and how fast, plus how
+// far the colours slide across it and how fast they do it
+uniform float uBandTilt, uBandSway, uBandBow, uBandRate;
+uniform float uSlide, uSlideRate;
+uniform float uWaveInt, uWaveBend;
+// the lobes: how tall each one is, how far apart they sit, how long each
+// one runs
+uniform float uLobeH, uLobeGap, uLobeW;
 uniform float uShadow, uRimTint, uCaustic, uCausticSize, uCausticGap, uCausticBlur;
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
@@ -129,33 +133,30 @@ vec3 spectral(float k) {
   return   mix(dq,   blue,   smoothstep(0.80, 1.00, k));
 }
 
-// a travelling wave, not a static arc. two components move at
-// different speeds so crests drift and meet instead of marching, and
-// the whole thing breathes
-float waveSpine(float x, float t) {
-  float ph = t * uWaveSpeed;
-  // one clean wave with its own octave on top. simple ratios read as
-  // harmony; incommensurate ones never repeat and read as noise
-  float a = sin(x * uWaveFreq - ph);
-  float b = sin(x * uWaveFreq * 2.0 + ph * 0.5 + 0.8) * 0.16;
-  float breathe = 0.90 + 0.10 * sin(t * 0.31);
-  return uWaveAmp * (a + b) * 0.9 * breathe;
+// the centre line of the band. measured frame by frame off the reference:
+// it barely moves. a fixed tilt, right hanging lower than left the whole
+// time, and a shallow sway on top. it is not a travelling wave
+float bandY(float x, float t) {
+  return -uBandTilt * x
+       + uBandSway * sin(x * uBandBow - t * uBandRate * 0.9 + 0.6);
 }
 
-// not a glowing band. six broad lobes of colour, each one a wide soft
-// patch with its own place along the run, its own height and its own
-// drift. they slide over each other like coloured lights: where two meet
-// they mix, and only the deepest pile-up burns to white. screened, not
-// summed, so the colours stay saturated instead of averaging to grey
+// six broad lobes of colour. the band sits still and the colours slide
+// across each other along its length, each at its own amplitude and its
+// own clock. red is nearly parked, the others swing wide. when they line
+// up the whole thing burns white for a moment, then the spectrum opens
+// again. that pulse is the motion, not the wave.
+// screened, not summed, so the colours stay saturated instead of grey
 vec3 waveField(vec2 w, float t) {
   float ends = smoothstep(1.34, 0.30, abs(w.x));
   if (ends <= 0.001) return vec3(0.0);
 
-  float tw   = sin(w.x * 1.4 - t * uWaveSpeed * 0.55);
+  float tw   = sin(w.x * 1.4 - t * uBandRate * 0.35);
   float face = 0.45 + 0.55 * abs(tw);            // 0 edge-on, 1 face-on
-  float z    = sin(w.x * 0.9 - t * uWaveSpeed * 0.33 + 1.7);
+  float z    = sin(w.x * 0.9 - t * uBandRate * 0.22 + 1.7);
   float per  = 1.0 / (1.0 + z * 0.30);           // nearer is bigger
   float run  = smoothstep(1.34, 0.42, abs(w.x)); // the ribbon has ends
+  float y0   = bandY(w.x, t);
 
   vec3 acc = vec3(0.0);
   for (int i = 0; i < 6; i++) {
@@ -163,14 +164,14 @@ vec3 waveField(vec2 w, float t) {
     float k  = fi / 5.0;                         // 0 red, 1 blue
     float s  = k - 0.5;
 
-    // where along the run this colour is sitting right now
-    float cx  = uLobeDrift * sin(t * (0.13 + 0.045 * fi) + fi * 2.1);
+    // where along the run this colour is sitting right now. the spread of
+    // amplitudes is what keeps them out of lockstep
+    float amp = uSlide * (0.10 + 0.90 * abs(sin(fi * 1.9 + 0.6)));
+    float cx  = amp * sin(t * uSlideRate * (1.0 + 0.14 * fi) + fi * 2.1);
     float wd  = uLobeW * (1.0 + 0.35 * sin(fi * 1.7));
     float env = exp(-pow((w.x - cx) / wd, 2.0));
 
-    float y = waveSpine(w.x * 2.3 + s * 0.80, t) * (1.0 + s * 0.18)
-            + s * uLobeGap * uLobeH * 2.4;
-
+    float y  = y0 + s * uLobeGap * uLobeH * 2.4;
     float g  = uLobeH * face * per * (1.7 + 0.5 * sin(fi * 2.3));
     float dy = (w.y - y * per) / max(g, 1e-4);
 
@@ -369,7 +370,7 @@ void main() {
   // some average curve. the wall can only carry the colour that is
   // actually shining on it. sample across the band, since the strands are
   // thin and the wall is lit by all of them at once
-  float syc = waveSpine(wx * 2.3, uTime);
+  float syc = bandY(wx, uTime);
   vec3 wsamp = waveField(vec2(wx, syc), uTime)
              + waveField(vec2(wx, syc + 0.34), uTime)
              + waveField(vec2(wx, syc - 0.34), uTime);
@@ -432,8 +433,10 @@ const DEFAULTS = {
   lightAngle: 2.0, lightPower: 0.8, refraction: 0.85, depth: 1.0,
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.55, smokePos: 0.00,
-  waveAmp: 0.32, waveFreq: 1.25, waveSpeed: 0.45, waveInt: 2.2, waveBend: 0.45,
-  lobeH: 0.13, lobeGap: 2.0, lobeW: 0.80, lobeDrift: 0.80,
+  bandTilt: 0.30, bandSway: 0.15, bandBow: 1.60, bandRate: 0.55,
+  slide: 0.30, slideRate: 0.55,
+  waveInt: 2.2, waveBend: 0.45,
+  lobeH: 0.13, lobeGap: 2.0, lobeW: 0.80,
   shadow: 0.14, rimTint: 0.45,
   caustic: 0.5, causticSize: 1.0, causticGap: 0.0, causticBlur: 0.5
 };
@@ -532,10 +535,11 @@ const RANGES = {
   splay: [1.5, 10, 0.1],
   shapeW: [0.5, 4, 0.05], shapeH: [0.2, 2, 0.02], smoke: [0, 1, 0.01],
   smokePos: [-0.8, 0.8, 0.02],
-  waveAmp: [0, 0.9, 0.01], waveFreq: [0.5, 8, 0.1], waveSpeed: [0, 2.5, 0.05],
+  bandTilt: [-1, 1, 0.01], bandSway: [0, 0.8, 0.01],
+  bandBow: [0.2, 6, 0.05], bandRate: [0, 3, 0.02],
+  slide: [0, 1.2, 0.01], slideRate: [0, 4, 0.02],
   waveInt: [0, 4, 0.02], waveBend: [0, 2, 0.05],
-  lobeH: [0.02, 0.5, 0.005], lobeGap: [0.2, 6, 0.05],
-  lobeW: [0.2, 2.5, 0.05], lobeDrift: [0, 2, 0.02],
+  lobeH: [0.02, 0.5, 0.005], lobeGap: [0.2, 6, 0.05], lobeW: [0.2, 2.5, 0.05],
   shadow: [0, 0.6, 0.01], rimTint: [0, 3, 0.05], caustic: [0, 2, 0.02],
   causticSize: [0.3, 3, 0.05], causticGap: [-1.5, 2, 0.05], causticBlur: [0, 2, 0.02]
 };
