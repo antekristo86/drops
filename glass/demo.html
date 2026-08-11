@@ -146,18 +146,18 @@ void main() {
     float dome = sqrt(max(0.0, 1.0 - t01 * t01));       // thickness profile
     // slope rises smoothly instead of standing up at the wall. a spike
     // there makes the background snap rather than flow
-    float slope = smoothstep(0.0, 1.0, t01) * t01 * 2.2;
+    float slope = smoothstep(0.0, 1.0, t01) * t01 * 3.2;
     vec3 N = normalize(vec3(n * slope, dome * 0.85 + 0.22));
     vec3 I = vec3(0.0, 0.0, -1.0);
 
-    float thick = 0.42 * uR * dome;
+    float thick = 0.75 * uR * dome;
     // three indices: glass splits the spectrum on its own
     vec3 Rr = refract(I, N, 0.652);
     vec3 Rg = refract(I, N, 0.662);
     vec3 Rb = refract(I, N, 0.674);
 
     // thickness also magnifies what sits behind the middle
-    vec2 mid = vUv - (q - c) / vec2(aspect, 1.0) * 0.34 * dome;
+    vec2 mid = vUv - (q - c) / vec2(aspect, 1.0) * 0.55 * dome;
     vec2 pan = vec2(uPan.x, -uPan.y);
 
     vec2 ur = mid + Rr.xy / max(0.3, abs(Rr.z)) * thick / vec2(aspect, 1.0);
@@ -191,7 +191,7 @@ void main() {
     float smoke = smoothstep(-0.95, 1.0, up);
     smoke = smoke * smoke * (3.0 - 2.0 * smoke);
     smoke = smoke * smoke * (3.0 - 2.0 * smoke);
-    col = mix(col, col * 0.07, smoke * 0.94);
+    col = mix(col, col * 0.10, smoke * 0.82);
 
     col += wv * 1.15;
 
@@ -316,7 +316,7 @@ function frame(t) {
   gl.uniform1f(uScale, scale);
   // the artwork drifts slowly, so its light-to-dark edge crosses the lens
   const T = t * 0.001;
-  gl.uniform2f(uPan, Math.sin(T * 0.09) * 0.035, Math.cos(T * 0.07) * 0.022);
+  gl.uniform2f(uPan, 0.0, 0.0);
   gl.uniform1i(uTex, 0);
   gl.uniform2f(uRes, canvas.width, canvas.height);
   gl.uniform1f(uTime, t * 0.001);
