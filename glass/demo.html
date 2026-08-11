@@ -12,9 +12,9 @@
 <body>
 <canvas id="c"></canvas>
 <script>
-// liquid glass. the ios 27 siri lens as one fragment shader:
-// refraction with chromatic split, a prismatic rim, a moving sheen.
-// the lens follows the cursor with inertia.
+// liquid glass. the ios 27 siri bubble as one fragment shader:
+// a bowed slot lens, refraction with chromatic split, dark glass fading
+// to clear, and the siri wave: a hot core with spectral wings.
 const canvas = document.getElementById('c');
 const gl = canvas.getContext('webgl', { antialias: false });
 
@@ -32,26 +32,24 @@ function drawBackground() {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
 
-  // soft light blob top left
   const r = ctx.createRadialGradient(w * 0.3, h * 0.2, 0, w * 0.3, h * 0.2, h * 0.9);
   r.addColorStop(0, 'rgba(255,214,170,0.16)');
   r.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = r;
   ctx.fillRect(0, 0, w, h);
 
-  // clock
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, '0');
   const mm = String(now.getMinutes()).padStart(2, '0');
   ctx.fillStyle = 'rgba(255,246,235,0.92)';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `600 ${h * 0.3}px -apple-system, 'Helvetica Neue', sans-serif`;
-  ctx.fillText(`${hh}:${mm}`, w / 2, h * 0.42);
-  ctx.font = `500 ${h * 0.045}px -apple-system, 'Helvetica Neue', sans-serif`;
+  ctx.font = `600 ${h * 0.26}px -apple-system, 'Helvetica Neue', sans-serif`;
+  ctx.fillText(`${hh}:${mm}`, w / 2, h * 0.46);
+  ctx.font = `500 ${h * 0.042}px -apple-system, 'Helvetica Neue', sans-serif`;
   ctx.fillStyle = 'rgba(255,246,235,0.65)';
   const date = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-  ctx.fillText(date, w / 2, h * 0.24);
+  ctx.fillText(date, w / 2, h * 0.3);
 }
 
 const vsSrc = `
@@ -65,72 +63,97 @@ varying vec2 vUv;
 uniform sampler2D uTex;
 uniform vec2 uRes;
 uniform float uTime;
-uniform vec2 uLens;      // lens center, uv
-uniform float uR;        // lens radius, uv (y-normalized)
-uniform vec2 uVel;       // lens velocity, squashes the bubble
 
-// signed distance to the lens (slightly squashed by motion)
-float lensSDF(vec2 q, vec2 c, float r, vec2 vel) {
-  vec2 d = q - c;
-  float squash = clamp(length(vel) * 6.0, 0.0, 0.35);
-  vec2 dir = length(vel) > 0.0001 ? normalize(vel) : vec2(1.0, 0.0);
-  float along = dot(d, dir);
-  float across = dot(d, vec2(-dir.y, dir.x));
-  d = dir * along * (1.0 - squash * 0.5) + vec2(-dir.y, dir.x) * across * (1.0 + squash * 0.5);
-  return length(d) - r;
+// slot geometry, uv units (y-normalized)
+const float HL  = 0.125;   // half length of the straight core
+const float RAD = 0.058;   // half height
+const float BOW = 0.014;   // downward belly of the centerline
+
+// centerline of the bowed slot: dips by BOW in the middle
+float spineY(float px) {
+  float t = clamp(px / HL, -1.0, 1.0);
+  return -BOW * (1.0 - t * t);
 }
 
-vec3 hue(float t) {
-  return clamp(abs(mod(t * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+// signed distance to the bowed slot
+float slotSDF(vec2 q, vec2 c) {
+  vec2 p = q - c;
+  p.y -= spineY(p.x);
+  vec2 k = vec2(max(abs(p.x) - HL, 0.0), p.y);
+  return length(k) - RAD;
 }
 
 void main() {
   float aspect = uRes.x / uRes.y;
   vec2 q = vec2(vUv.x * aspect, vUv.y);
-  vec2 c = vec2(uLens.x * aspect, uLens.y);
+  vec2 c = vec2(0.5 * aspect, 0.84);
 
-  float d = lensSDF(q, c, uR, uVel);
+  float d = slotSDF(q, c);
   vec3 col = texture2D(uTex, vec2(vUv.x, 1.0 - vUv.y)).rgb;
 
   if (d < 0.0) {
-    // inside the lens: refract. strength peaks at the rim, calm center
-    float depth = -d / uR;                       // 1 center, 0 rim
-    vec2 n = normalize(q - c + 1e-6);
-    float bend = pow(1.0 - depth, 3.0);          // rim-heavy, calm center
-    float mag = 0.09 * uR;                       // center magnification
+    float depth = -d / RAD;                     // 0 rim, 1 spine
+    // sdf gradient as refraction normal
+    float e = 0.002;
+    vec2 n = normalize(vec2(
+      slotSDF(q + vec2(e, 0.0), c) - slotSDF(q - vec2(e, 0.0), c),
+      slotSDF(q + vec2(0.0, e), c) - slotSDF(q - vec2(0.0, e), c)
+    ) + 1e-6);
 
-    vec2 base = vUv - (q - c) / vec2(aspect, 1.0) * mag * depth;
-    vec2 shift = n / vec2(aspect, 1.0) * bend * uR * 0.26;
+    float bend = pow(1.0 - depth, 3.0);
+    vec2 base = vUv;
+    vec2 shift = n / vec2(aspect, 1.0) * bend * RAD * 0.5;
 
     float rr = texture2D(uTex, vec2(base.x - shift.x * 1.12, 1.0 - (base.y - shift.y * 1.12))).r;
     float gg = texture2D(uTex, vec2(base.x - shift.x,        1.0 - (base.y - shift.y))).g;
     float bb = texture2D(uTex, vec2(base.x - shift.x * 0.88, 1.0 - (base.y - shift.y * 0.88))).b;
     col = vec3(rr, gg, bb);
 
-    // slight glass tint toward the rim
-    col *= mix(1.0, 0.9, bend);
+    // dark glass: solid toward the top of the slot, fading to clear below
+    float vert = clamp((q.y - (c.y + spineY(q.x - c.x) - RAD)) / (2.0 * RAD), 0.0, 1.0);
+    float darkness = smoothstep(0.35, 0.95, vert);
+    col = mix(col, col * 0.06, darkness * 0.92);
 
-    // prismatic sliver: a thin spectral arc, only in a moving window,
-    // a whisper not a rainbow
-    float band = smoothstep(0.14, 0.02, depth) * smoothstep(0.0, 0.02, depth);
-    float ang = atan(q.y - c.y, q.x - c.x);
-    vec3 iri = hue(ang * 0.35 + uTime * 0.04);
-    float window = smoothstep(0.45, 1.0, sin(ang - uTime * 0.35));
-    float window2 = smoothstep(0.7, 1.0, sin(ang * 1.0 + 2.6 + uTime * 0.22));
-    col += iri * band * (window * 0.22 + window2 * 0.12);
+    // ---- the siri wave ----
+    // rides the spine, undulates gently. hot narrow core inside a wide
+    // soft bloom. warm left wing, cool right wing, white heart
+    float px = q.x - c.x;
+    float tx = clamp(px / HL, -1.2, 1.2);
+    // one gentle hump that slowly travels, not a sine train
+    float wy = c.y + spineY(px) - RAD * 0.05
+             + RAD * 0.16 * sin(px * 7.0 + uTime * 0.5)
+             + RAD * 0.045 * sin(px * 15.0 - uTime * 0.33);
+    float dy = q.y - wy;
 
-    // sheen: soft white highlight top edge, subtle
-    float topness = clamp((q.y - c.y) / uR, -1.0, 1.0);
-    col += vec3(1.0) * band * smoothstep(0.45, 1.0, topness) * 0.18;
+    float endMask = smoothstep(1.15, 0.55, abs(tx));
+    float core  = exp(-pow(dy / (RAD * 0.06), 2.0)) * endMask;
+    // bloom bleeds further down than up, like light settling
+    float spreadDown = dy < 0.0 ? RAD * 0.75 : RAD * 0.38;
+    float bloom = exp(-pow(dy / spreadDown, 2.0)) * endMask;
+
+    float drift = sin(uTime * 0.25) * 0.35;
+    vec3 warm = vec3(1.0, 0.52, 0.18);
+    vec3 cool = vec3(0.35, 0.62, 1.0);
+    vec3 wing = mix(warm, cool, smoothstep(-1.0, 1.0, tx + drift));
+    vec3 heart = mix(wing, vec3(1.0), 0.75);
+
+    float breathe = 0.8 + 0.2 * sin(uTime * 0.6);
+    col += wing * bloom * 0.5 * breathe;
+    col += heart * core * 1.35 * breathe;
+
+    // faint spectral rim inside the glass
+    float band = smoothstep(0.16, 0.02, depth) * smoothstep(0.0, 0.02, depth);
+    col += wing * band * 0.1;
   }
 
-  // drop shadow just outside the lens
-  float sh = smoothstep(0.045, 0.0, d) * smoothstep(-0.02, 0.0, d);
-  col *= 1.0 - sh * 0.35;
+  // drop shadow just outside
+  float sh = smoothstep(0.05, 0.0, d) * smoothstep(-0.02, 0.0, d);
+  col *= 1.0 - sh * 0.4;
 
-  // hairline rim
-  float rim = smoothstep(0.004, 0.0, abs(d)) * 0.5;
-  col += vec3(rim) * 0.6;
+  // hairline rim: lit from above, fades out at the sides
+  float topLight = clamp((q.y - c.y) / RAD * 0.5 + 0.6, 0.05, 1.0);
+  float rim = smoothstep(0.0035, 0.0, abs(d)) * 0.5 * topLight;
+  col += vec3(rim);
 
   gl_FragColor = vec4(col, 1.0);
 }`;
@@ -163,17 +186,6 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 const uTex = gl.getUniformLocation(prog, 'uTex');
 const uRes = gl.getUniformLocation(prog, 'uRes');
 const uTime = gl.getUniformLocation(prog, 'uTime');
-const uLens = gl.getUniformLocation(prog, 'uLens');
-const uRU = gl.getUniformLocation(prog, 'uR');
-const uVel = gl.getUniformLocation(prog, 'uVel');
-
-// lens follows the cursor with inertia. same physics as everything else
-let lx = 0.5, ly = 0.45, tx = 0.5, ty = 0.45, vx = 0, vy = 0;
-
-addEventListener('pointermove', e => {
-  tx = e.clientX / innerWidth;
-  ty = 1 - e.clientY / innerHeight;
-});
 
 function resize() {
   dpr = Math.min(devicePixelRatio, 2);
@@ -189,24 +201,10 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 
-let last = performance.now();
 function frame(t) {
-  const now = performance.now();
-  last = now;
-
-  // critically damped chase
-  const k = 0.015, cd = 2 * Math.sqrt(k);
-  vx += (tx - lx) * k - vx * cd * 0.6;
-  vy += (ty - ly) * k - vy * cd * 0.6;
-  lx += vx;
-  ly += vy;
-
   gl.uniform1i(uTex, 0);
   gl.uniform2f(uRes, canvas.width, canvas.height);
   gl.uniform1f(uTime, t * 0.001);
-  gl.uniform2f(uLens, lx, ly);
-  gl.uniform1f(uRU, 0.13);
-  gl.uniform2f(uVel, vx, vy);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   requestAnimationFrame(frame);
 }
