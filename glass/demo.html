@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>liquid glass</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: crosshair; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// liquid glass. the ios 27 siri lens as one fragment shader:
+// refraction with chromatic split, a prismatic rim, a moving sheen.
+// the lens follows the cursor with inertia.
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl', { antialias: false });
+
+// ---- background: a lockscreen-ish surface drawn once ----
+const tex2d = document.createElement('canvas');
+const ctx = tex2d.getContext('2d');
+let dpr = 1;
+
+function drawBackground() {
+  const w = tex2d.width, h = tex2d.height;
+  const g = ctx.createLinearGradient(0, 0, w, h);
+  g.addColorStop(0, '#2a2438');
+  g.addColorStop(0.5, '#171522');
+  g.addColorStop(1, '#0b0a12');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+
+  // soft light blob top left
+  const r = ctx.createRadialGradient(w * 0.3, h * 0.2, 0, w * 0.3, h * 0.2, h * 0.9);
+  r.addColorStop(0, 'rgba(255,214,170,0.16)');
+  r.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = r;
+  ctx.fillRect(0, 0, w, h);
+
+  // clock
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  ctx.fillStyle = 'rgba(255,246,235,0.92)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `600 ${h * 0.3}px -apple-system, 'Helvetica Neue', sans-serif`;
+  ctx.fillText(`${hh}:${mm}`, w / 2, h * 0.42);
+  ctx.font = `500 ${h * 0.045}px -apple-system, 'Helvetica Neue', sans-serif`;
+  ctx.fillStyle = 'rgba(255,246,235,0.65)';
+  const date = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  ctx.fillText(date, w / 2, h * 0.24);
+}
+
+const vsSrc = `
+attribute vec2 p;
+varying vec2 vUv;
+void main() { vUv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }`;
+
+const fsSrc = `
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uTime;
+uniform vec2 uLens;      // lens center, uv
+uniform float uR;        // lens radius, uv (y-normalized)
+uniform vec2 uVel;       // lens velocity, squashes the bubble
+
+// signed distance to the lens (slightly squashed by motion)
+float lensSDF(vec2 q, vec2 c, float r, vec2 vel) {
+  vec2 d = q - c;
+  float squash = clamp(length(vel) * 6.0, 0.0, 0.35);
+  vec2 dir = length(vel) > 0.0001 ? normalize(vel) : vec2(1.0, 0.0);
+  float along = dot(d, dir);
+  float across = dot(d, vec2(-dir.y, dir.x));
+  d = dir * along * (1.0 - squash * 0.5) + vec2(-dir.y, dir.x) * across * (1.0 + squash * 0.5);
+  return length(d) - r;
+}
+
+vec3 hue(float t) {
+  return clamp(abs(mod(t * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+}
+
+void main() {
+  float aspect = uRes.x / uRes.y;
+  vec2 q = vec2(vUv.x * aspect, vUv.y);
+  vec2 c = vec2(uLens.x * aspect, uLens.y);
+
+  float d = lensSDF(q, c, uR, uVel);
+  vec3 col = texture2D(uTex, vec2(vUv.x, 1.0 - vUv.y)).rgb;
+
+  if (d < 0.0) {
+    // inside the lens: refract. strength peaks at the rim, calm center
+    float depth = -d / uR;                       // 1 center, 0 rim
+    vec2 n = normalize(q - c + 1e-6);
+    float bend = pow(1.0 - depth, 3.0);          // rim-heavy, calm center
+    float mag = 0.09 * uR;                       // center magnification
+
+    vec2 base = vUv - (q - c) / vec2(aspect, 1.0) * mag * depth;
+    vec2 shift = n / vec2(aspect, 1.0) * bend * uR * 0.26;
+
+    float rr = texture2D(uTex, vec2(base.x - shift.x * 1.12, 1.0 - (base.y - shift.y * 1.12))).r;
+    float gg = texture2D(uTex, vec2(base.x - shift.x,        1.0 - (base.y - shift.y))).g;
+    float bb = texture2D(uTex, vec2(base.x - shift.x * 0.88, 1.0 - (base.y - shift.y * 0.88))).b;
+    col = vec3(rr, gg, bb);
+
+    // slight glass tint toward the rim
+    col *= mix(1.0, 0.9, bend);
+
+    // prismatic sliver: a thin spectral arc, only in a moving window,
+    // a whisper not a rainbow
+    float band = smoothstep(0.14, 0.02, depth) * smoothstep(0.0, 0.02, depth);
+    float ang = atan(q.y - c.y, q.x - c.x);
+    vec3 iri = hue(ang * 0.35 + uTime * 0.04);
+    float window = smoothstep(0.45, 1.0, sin(ang - uTime * 0.35));
+    float window2 = smoothstep(0.7, 1.0, sin(ang * 1.0 + 2.6 + uTime * 0.22));
+    col += iri * band * (window * 0.22 + window2 * 0.12);
+
+    // sheen: soft white highlight top edge, subtle
+    float topness = clamp((q.y - c.y) / uR, -1.0, 1.0);
+    col += vec3(1.0) * band * smoothstep(0.45, 1.0, topness) * 0.18;
+  }
+
+  // drop shadow just outside the lens
+  float sh = smoothstep(0.045, 0.0, d) * smoothstep(-0.02, 0.0, d);
+  col *= 1.0 - sh * 0.35;
+
+  // hairline rim
+  float rim = smoothstep(0.004, 0.0, abs(d)) * 0.5;
+  col += vec3(rim) * 0.6;
+
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s);
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, vsSrc));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fsSrc));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(loc);
+gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+const tex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, tex);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+const uTex = gl.getUniformLocation(prog, 'uTex');
+const uRes = gl.getUniformLocation(prog, 'uRes');
+const uTime = gl.getUniformLocation(prog, 'uTime');
+const uLens = gl.getUniformLocation(prog, 'uLens');
+const uRU = gl.getUniformLocation(prog, 'uR');
+const uVel = gl.getUniformLocation(prog, 'uVel');
+
+// lens follows the cursor with inertia. same physics as everything else
+let lx = 0.5, ly = 0.45, tx = 0.5, ty = 0.45, vx = 0, vy = 0;
+
+addEventListener('pointermove', e => {
+  tx = e.clientX / innerWidth;
+  ty = 1 - e.clientY / innerHeight;
+});
+
+function resize() {
+  dpr = Math.min(devicePixelRatio, 2);
+  canvas.width = innerWidth * dpr;
+  canvas.height = innerHeight * dpr;
+  tex2d.width = canvas.width;
+  tex2d.height = canvas.height;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  drawBackground();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, tex2d);
+}
+addEventListener('resize', resize);
+resize();
+
+let last = performance.now();
+function frame(t) {
+  const now = performance.now();
+  last = now;
+
+  // critically damped chase
+  const k = 0.015, cd = 2 * Math.sqrt(k);
+  vx += (tx - lx) * k - vx * cd * 0.6;
+  vy += (ty - ly) * k - vy * cd * 0.6;
+  lx += vx;
+  ly += vy;
+
+  gl.uniform1i(uTex, 0);
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform1f(uTime, t * 0.001);
+  gl.uniform2f(uLens, lx, ly);
+  gl.uniform1f(uRU, 0.13);
+  gl.uniform2f(uVel, vx, vy);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
