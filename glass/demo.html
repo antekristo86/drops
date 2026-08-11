@@ -93,15 +93,15 @@ vec3 waveField(vec2 w, float t) {
   if (ends <= 0.001) return vec3(0.0);
   float base = waveSpine(w.x * 2.3, t);
   vec3 acc = vec3(0.0);
-  for (int i = 0; i < 9; i++) {
-    float k = float(i) / 8.0;
+  for (int i = 0; i < 13; i++) {
+    float k = float(i) / 12.0;
     float off  = (k - 0.5) * 0.20;                  // fan open vertically
     float tilt = (k - 0.5) * 0.17 * (w.x + 0.35);   // and diverge to the right
     float dy = w.y - (base + off + tilt);
-    float wd = 0.075 + 0.045 * abs(k - 0.5) * 2.0;  // outer bands softer
+    float wd = 0.105;                               // equal width, no band stands out
     acc += spectral(k) * exp(-dy * dy / (wd * wd));
   }
-  return acc / 4.2 * ends;
+  return acc / 7.0 * ends;
 }
 
 void main() {
