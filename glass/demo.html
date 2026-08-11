@@ -69,15 +69,14 @@ uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uVel;       // lens velocity, squashes the bubble
 
-// signed distance to the inflated slot: a superellipse, wider than tall,
-// sides bulging like a balloon under pressure
-float lensSDF(vec2 q, vec2 c, float r, vec2 vel) {
+// the inflated slot: a superellipse, wider than tall, sides bulging.
+// raw implicit field, normalized to a true distance in main
+float lensField(vec2 q, vec2 c, float r) {
   vec2 p = q - c;
   float a = r * 1.38;         // half width
   float b = r;                // half height
   float n = 2.6;              // inflation. 2 = ellipse, higher = puffier
-  float v = pow(pow(abs(p.x / a), n) + pow(abs(p.y / b), n), 1.0 / n);
-  return (v - 1.0) * b;
+  return pow(pow(abs(p.x / a), n) + pow(abs(p.y / b), n), 1.0 / n) - 1.0;
 }
 
 vec3 hue(float t) {
@@ -89,17 +88,22 @@ void main() {
   vec2 q = vec2(vUv.x * aspect, vUv.y);
   vec2 c = vec2(uLens.x * aspect, uLens.y);
 
-  float d = lensSDF(q, c, uR, uVel);
+  // first-order distance: field over gradient magnitude. keeps the rim,
+  // shadow and bands equally thick all the way around
+  float e = 0.0015;
+  float F = lensField(q, c, uR);
+  vec2 g = vec2(
+    lensField(q + vec2(e, 0.0), c, uR) - lensField(q - vec2(e, 0.0), c, uR),
+    lensField(q + vec2(0.0, e), c, uR) - lensField(q - vec2(0.0, e), c, uR)
+  ) / (2.0 * e);
+  float gm = max(length(g), 1e-3);
+  float d = F / gm;
   vec3 col = texture2D(uTex, vec2(vUv.x, 1.0 - vUv.y)).rgb;
 
   if (d < 0.0) {
     // inside the lens: refract. strength peaks at the rim, calm center
-    float depth = -d / uR;                       // 1 center, 0 rim
-    float e = 0.002;
-    vec2 n = normalize(vec2(
-      lensSDF(q + vec2(e, 0.0), c, uR, uVel) - lensSDF(q - vec2(e, 0.0), c, uR, uVel),
-      lensSDF(q + vec2(0.0, e), c, uR, uVel) - lensSDF(q - vec2(0.0, e), c, uR, uVel)
-    ) + 1e-6);
+    float depth = clamp(-d / uR, 0.0, 1.0);     // 1 center, 0 rim
+    vec2 n = g / gm;
     float bend = pow(1.0 - depth, 3.0);          // rim-heavy, calm center
     float mag = 0.09 * uR;                       // center magnification
 
