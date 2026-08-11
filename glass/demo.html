@@ -83,7 +83,7 @@ uniform float uSplay;                     // how sharply the rim flares
 // this piece specifically
 uniform float uShapeW, uShapeH, uSmoke, uSmokePos;
 uniform float uWaveAmp, uWaveGirth, uWaveInt, uWaveSat, uWaveBend;
-uniform float uShadow, uRimTint, uWaveFreq, uWaveSpeed;
+uniform float uShadow, uRimTint, uWaveFreq, uWaveSpeed, uWaveCore, uWaveReach;
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uVel;       // lens velocity, squashes the bubble
@@ -165,10 +165,10 @@ vec3 waveField(vec2 w, float t) {
   float sat = smoothstep(0.01, uWaveSat, au);
   vec3 tone = mix(vec3(1.0, 0.99, 0.97), hue, sat);
 
-  // dense inside, long graceful tail outside
+  // two dials: how fat the filament runs, how far the colour reaches out
   float bodyG = exp(-u * u * 1.15);
-  float tail  = 0.34 / (1.0 + au * au * 2.8);
-  float core  = exp(-u * u * 90.0);
+  float tail  = 0.34 / (1.0 + au * au * uWaveReach);
+  float core  = exp(-u * u / max(uWaveCore * uWaveCore, 1e-5));
 
   vec3 acc = tone * (bodyG * 1.15 + tail * 0.7);
   acc += vec3(1.0, 0.99, 0.97) * core * 0.9;
@@ -357,7 +357,7 @@ const DEFAULTS = {
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.90, smokePos: 0.00,
   waveAmp: 0.28, waveGirth: 0.185, waveInt: 0.95, waveSat: 0.08, waveBend: 0.45,
-  shadow: 0.14, rimTint: 0.45, waveFreq: 2.4, waveSpeed: 0.55
+  shadow: 0.14, rimTint: 0.45, waveFreq: 2.4, waveSpeed: 0.55, waveCore: 0.105, waveReach: 2.8
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
@@ -456,7 +456,8 @@ const RANGES = {
   smokePos: [-0.8, 0.8, 0.02], waveAmp: [0, 0.9, 0.01], waveGirth: [0.02, 0.5, 0.005],
   waveInt: [0, 3, 0.02], waveSat: [0.02, 0.8, 0.01], waveBend: [0, 2, 0.05],
   shadow: [0, 0.6, 0.01], rimTint: [0, 3, 0.05],
-  waveFreq: [0.5, 8, 0.1], waveSpeed: [0, 2.5, 0.05]
+  waveFreq: [0.5, 8, 0.1], waveSpeed: [0, 2.5, 0.05],
+  waveCore: [0.02, 0.5, 0.005], waveReach: [0.3, 12, 0.1]
 };
 const panel = document.getElementById('tune');
 panel.innerHTML = Object.keys(RANGES).map(k => {
