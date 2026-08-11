@@ -164,11 +164,16 @@ vec3 waveField(vec2 w, float t) {
     float y = waveSpine(w.x * 2.3 + s * 0.40, t) * (1.0 + s * 0.10)
             + s * uWaveReach * uWaveGirth * 1.9;
 
-    float g  = uWaveGirth * wide * (0.50 + 0.40 * k);
-    float dy = (w.y - y * per) / max(g, 1e-4);
+    // the two outermost wavelengths bound the band. they run thin and
+    // burn hard, and they are what you read as its edge. the ones between
+    // them are wide and faint, so the body stays translucent and the only
+    // glare is where all of them pile up. paper, not a painted stripe
+    float rim = abs(s) * 2.0;                    // 0 middle, 1 outermost
+    float g   = uWaveGirth * wide * (0.30 + 0.55 * (1.0 - rim));
+    float dy  = (w.y - y * per) / max(g, 1e-4);
 
     vec3 tone = mix(vec3(1.0, 0.99, 0.97), spectral(k), min(uWaveSat * 12.0, 1.0));
-    acc += tone * exp(-dy * dy) * per * run;
+    acc += tone * exp(-dy * dy) * (0.40 + 0.75 * rim) * per * run;
   }
 
   return acc * 0.42 * ends;
@@ -354,13 +359,18 @@ void main() {
   // burns brightest where the beam runs closest
   float wx = clamp((q.x - c.x) / hwR, -1.4, 1.4);
   float wyy = (q.y - c.y) / hhR;
-  // read the ribbon itself here, not a spectrum invented from the distance
-  // to some average curve. the wall can only carry the colour that is
-  // actually shining on it
-  vec3 wsamp = waveField(vec2(wx, wyy), uTime);
+  // read the ribbon itself, not a spectrum invented from the distance to
+  // some average curve. the wall can only carry the colour that is
+  // actually shining on it. sample across the band, since the strands are
+  // thin and the wall is lit by all of them at once
+  float syc = waveSpine(wx * 2.3, uTime);
+  vec3 wsamp = waveField(vec2(wx, syc), uTime)
+             + waveField(vec2(wx, syc + 0.34), uTime)
+             + waveField(vec2(wx, syc - 0.34), uTime);
   float wlum = max(max(wsamp.r, wsamp.g), wsamp.b);
   vec3 wcol = wlum > 1e-4 ? wsamp / wlum : vec3(1.0);
-  float prox = clamp(wlum * 1.6, 0.0, 1.0) * smoothstep(1.35, 0.2, abs(wx));
+  float sideD = wyy - syc;
+  float prox = exp(-sideD * sideD * 3.2) * smoothstep(1.35, 0.2, abs(wx));
   vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), wcol, clamp(prox * uRimTint, 0.0, 1.0));
 
   // and the wall itself glows a little where the beam meets it
@@ -412,7 +422,7 @@ const DEFAULTS = {
   lightAngle: 2.0, lightPower: 0.8, refraction: 0.85, depth: 1.0,
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.90, smokePos: 0.00,
-  waveAmp: 0.32, waveGirth: 0.17, waveInt: 1.5, waveSat: 0.08, waveBend: 0.45,
+  waveAmp: 0.32, waveGirth: 0.13, waveInt: 1.5, waveSat: 0.08, waveBend: 0.45,
   shadow: 0.14, rimTint: 0.45, waveFreq: 1.25, waveSpeed: 0.45, waveCore: 0.060, waveReach: 1.45, caustic: 0.5, causticSize: 1.0, causticGap: 0.0
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
