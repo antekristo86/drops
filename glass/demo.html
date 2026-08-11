@@ -101,6 +101,13 @@ void main() {
     // slight glass tint toward the rim
     col *= mix(1.0, 0.9, bend);
 
+    // the body is smoked at the top and clears toward the bottom.
+    // the fade sits just above center, where the wave will ride
+    float hh = uR * 0.72 * uScale;
+    float up = (q.y - c.y) / hh;                 // -1 bottom, +1 top
+    float smoke = smoothstep(-0.05, 0.62, up);
+    col = mix(col, col * 0.05, smoke * 0.97);
+
     // prismatic sliver: a thin spectral arc, only in a moving window,
     // a whisper not a rainbow
     float band = smoothstep(0.14, 0.02, depth) * smoothstep(0.0, 0.02, depth);
