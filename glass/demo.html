@@ -72,7 +72,7 @@ uniform vec2 uVel;       // lens velocity, squashes the bubble
 // a rectangle with rounded corners. exact sdf
 float lensField(vec2 q, vec2 c, float r) {
   vec2 halfSize = vec2(r * 1.5, r);
-  float rad = r * 0.5;
+  float rad = r;   // full half-height: the slot, semicircular ends
   vec2 d2 = abs(q - c) - (halfSize - rad);
   return length(max(d2, vec2(0.0))) + min(max(d2.x, d2.y), 0.0) - rad;
 }
