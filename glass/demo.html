@@ -186,8 +186,8 @@ const tex = gl.createTexture();
 gl.bindTexture(gl.TEXTURE_2D, tex);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.MIRRORED_REPEAT);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
 const uTex = gl.getUniformLocation(prog, 'uTex');
 const uRes = gl.getUniformLocation(prog, 'uRes');
@@ -234,7 +234,7 @@ function frame(t) {
   gl.uniform1f(uScale, scale);
   // the artwork drifts slowly, so its light-to-dark edge crosses the lens
   const T = t * 0.001;
-  gl.uniform2f(uPan, Math.sin(T * 0.11) * 0.12, Math.cos(T * 0.08) * 0.07);
+  gl.uniform2f(uPan, Math.sin(T * 0.09) * 0.035, Math.cos(T * 0.07) * 0.022);
   gl.uniform1i(uTex, 0);
   gl.uniform2f(uRes, canvas.width, canvas.height);
   gl.uniform1f(uTime, t * 0.001);
