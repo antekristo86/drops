@@ -49,11 +49,11 @@ precision highp float;
 varying vec2 vUv;
 uniform vec2 uRes;
 uniform float uTime;
-uniform float uLen, uWidth, uCam;
-uniform float uWaveY, uFreqY, uWaveZ, uFreqZ, uRoll, uFreqRoll, uSpeed;
-uniform float uBands, uSeam, uFill, uGraze, uGain, uThick, uEnds;
+uniform float uLen, uHeight, uEye, uTilt;
+uniform float uRoll, uLag, uWob, uWobFreq;
+uniform float uThick, uEdge, uBack, uFill, uGain, uSpeed;
 
-// spectrum printed across the cloth. k = 0 red, k = 1 violet
+// spectrum around the roll. k = 0 red, k = 1 violet
 vec3 spectral(float k) {
   vec3 red    = vec3(1.00, 0.22, 0.20);
   vec3 orange = vec3(1.00, 0.58, 0.18);
@@ -68,89 +68,62 @@ vec3 spectral(float k) {
   return   mix(dq,   blue,   smoothstep(0.80, 1.00, k));
 }
 
-// the centre line of the ribbon, in space
-vec3 spine(float s, float t) {
-  return vec3(
-    s * uLen,
-    uWaveY * sin(s * uFreqY - t),
-    uWaveZ * sin(s * uFreqZ - t * 0.7 + 1.3)
-  );
-}
-
-// its tangent, analytically
-vec3 spineT(float s, float t) {
-  return normalize(vec3(
-    uLen,
-    uWaveY * uFreqY * cos(s * uFreqY - t),
-    uWaveZ * uFreqZ * cos(s * uFreqZ - t * 0.7 + 1.3)
-  ));
-}
-
-// perspective. nearer is bigger, and that is the only reason it is
-vec2 project(vec3 p) {
-  return p.xy * (uCam / max(uCam - p.z, 0.05));
-}
-
 void main() {
   float aspect = uRes.x / uRes.y;
-  vec2 pix = vec2((vUv.x - 0.5) * aspect, vUv.y - 0.5);
+  vec2 q = vec2((vUv.x - 0.5) * aspect, vUv.y - 0.5);
   float t = uTime * uSpeed;
 
+  float x = q.x / uLen;                        // -1..1 along the band
+  if (abs(x) > 1.15) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+
+  // the band is a flattened tube, fattest in the middle, closing to a
+  // point at both ends. this eye shape IS its silhouette, nothing drawn
+  float env = uHeight * pow(max(1.0 - x * x, 0.0), uEye);
+  if (env < 1e-4) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+
+  // the centre line barely moves: a fixed tilt and a shallow breath
+  float centre = uTilt * x + 0.25 * uHeight * sin(x * 1.3 - t * 0.4) * uWob;
+
+  // the roll. this is the whole motion: the cloth turns around its long
+  // axis, phase running along the length, so the turn travels as a wave
+  float roll = t * uRoll + x * uLag + uWob * sin(x * uWobFreq - t * 0.7);
+
   vec3 col = vec3(0.0);
-  float sig = max(uThick, 0.001);
 
-  // walk the ribbon along its length. every step is one rib of cloth,
-  // projected to the screen as a segment; the pixel asks each rib whether
-  // it lands on it and how much cloth it is looking at
-  for (int i = 0; i < 96; i++) {
-    float s = (float(i) / 95.0) * 2.0 - 1.0;
+  // six colours printed around the tube. each one is carried around by
+  // the roll: over the top, wide and faint through the front, under the
+  // bottom, dim across the back. at the silhouette the surface stands
+  // edge-on, the print bunches up, and the line burns. that is why the
+  // edges are bright and the middle is translucent
+  for (int i = 0; i < 6; i++) {
+    float k = float(i) / 5.0;
+    float th = float(i) * 1.04720 + roll;      // 6 colours around the circle
+    float sn = sin(th), cs = cos(th);
 
-    vec3 C = spine(s, t);
-    vec3 T = spineT(s, t);
-    // a frame that rolls along the length. this is the twist, in 3D
-    vec3 W0 = normalize(cross(T, vec3(0.0, 0.0, 1.0)));
-    vec3 N0 = cross(W0, T);
-    float roll = uRoll * sin(s * uFreqRoll - t * 1.1);
-    vec3 W = W0 * cos(roll) + N0 * sin(roll);
+    float y = centre + env * sn;               // projected height on screen
+    float ac = abs(cs);
+    float ht = max(env * uThick * (0.35 + 0.65 * ac), 0.0015);
 
-    // the cloth narrows toward the two ends
-    float taper = pow(max(1.0 - s * s, 0.0), uEnds);
-    float hw = uWidth * taper;
-    if (hw < 1e-5) continue;
+    float d = (q.y - y) / ht;
+    float a = exp(-d * d);
 
-    vec2 a = project(C - W * hw);
-    vec2 b = project(C + W * hw);
-    vec2 m = (a + b) * 0.5;
-    vec2 e = (b - a) * 0.5;
-    float len = length(e);
-    if (len < 1e-5) continue;
-    vec2 dir = e / len;
+    // foreshortening: edge-on packs the same print into fewer pixels
+    float dens = mix(1.0, 1.0 / max(ac, 0.10), uEdge);
+    // the far side of the tube is seen through the cloth. the handover
+    // is soft, a hard switch prints vertical seams where the roll flips
+    float vis = mix(uBack, 1.0, smoothstep(-0.25, 0.25, cs));
 
-    vec2 rel = pix - m;
-    float v = dot(rel, dir) / len;             // -1..1 across the cloth
-    if (abs(v) > 1.0) continue;
-    float perp = abs(rel.x * dir.y - rel.y * dir.x);
-
-    // how much cloth this pixel is looking at. a short projected rib is
-    // the same strip squeezed into fewer pixels, so it reads brighter.
-    // nothing here is painted: it is the surface turning away
-    float dens = 1.0 / max(len, 0.004);
-    float kern = exp(-(perp * perp) / (sig * sig));
-
-    float k = v * 0.5 + 0.5;
-    float seam = abs(fract(k * uBands) - 0.5) * 2.0;
-    float av = abs(v);
-
-    vec3 hue = spectral(k);
-    float body = uFill * (1.0 - av * av);
-    float edge = uSeam * pow(seam, 5.0);
-    float graze = uGraze * pow(av, 6.0);
-
-    col += (hue * (body + edge) + vec3(1.0, 0.99, 0.97) * graze)
-         * kern * dens * taper;
+    vec3 strand = spectral(k) * a * dens * vis * 0.40;
+    col = 1.0 - (1.0 - col) * (1.0 - clamp(strand, 0.0, 1.0));
   }
 
-  gl_FragColor = vec4(col * uGain * 0.02, 1.0);
+  // the cloth itself, a faint white body inside the silhouette
+  float vy = (q.y - centre) / env;
+  float body = max(1.0 - vy * vy, 0.0);
+  col = 1.0 - (1.0 - col) * (1.0 - vec3(1.0, 0.99, 0.97) * body * body * uFill);
+
+  float ends = smoothstep(1.15, 0.75, abs(x));
+  gl_FragColor = vec4(col * uGain * ends, 1.0);
 }`;
 
 function compile(type, src) {
@@ -177,11 +150,10 @@ const uTime = gl.getUniformLocation(prog, 'uTime');
 
 // press D for the panel
 const DEFAULTS = {
-  len: 0.34, width: 0.075, cam: 1.6,
-  waveY: 0.030, freqY: 2.0, waveZ: 0.090, freqZ: 1.6,
-  roll: 0.90, freqRoll: 1.8, speed: 0.55,
-  bands: 6, seam: 0.30, fill: 0.60, graze: 0.55,
-  gain: 2.6, thick: 0.007, ends: 0.35
+  len: 0.46, height: 0.055, eye: 0.55, tilt: -0.03,
+  roll: 0.85, lag: 0.9, wob: 0.35, wobFreq: 1.6,
+  thick: 0.30, edge: 0.75, back: 0.28, fill: 0.14,
+  gain: 1.0, speed: 1.0
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('waveTune') || '{}'));
 const U = {};
@@ -207,12 +179,11 @@ requestAnimationFrame(frame);
 
 // ---- tuning panel ----
 const RANGES = {
-  len: [0.1, 0.9, 0.01], width: [0.005, 0.3, 0.002], cam: [0.4, 6, 0.05],
-  waveY: [0, 0.25, 0.002], freqY: [0, 8, 0.05],
-  waveZ: [0, 0.4, 0.005], freqZ: [0, 8, 0.05],
-  roll: [0, 3.14, 0.02], freqRoll: [0, 8, 0.05], speed: [0, 3, 0.02],
-  bands: [2, 14, 1], seam: [0, 2, 0.01], fill: [0, 2, 0.01], graze: [0, 2, 0.01],
-  gain: [0, 4, 0.02], thick: [0.0005, 0.02, 0.0005], ends: [0.05, 2, 0.05]
+  len: [0.1, 0.9, 0.01], height: [0.02, 0.3, 0.002], eye: [0.2, 2, 0.02],
+  tilt: [-0.3, 0.3, 0.005],
+  roll: [0, 3, 0.02], lag: [0, 6, 0.05], wob: [0, 2, 0.02], wobFreq: [0, 8, 0.05],
+  thick: [0.05, 1, 0.01], edge: [0, 1, 0.01], back: [0, 1, 0.01],
+  fill: [0, 0.6, 0.005], gain: [0, 3, 0.02], speed: [0, 3, 0.02]
 };
 const panel = document.getElementById('tune');
 let html = '';
