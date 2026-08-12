@@ -27,11 +27,15 @@
 <script>
 // the siri band on its own, out of the lens, so one thing at a time.
 //
-// it is a flag. a ribbon lying in space, waving on the spot. fixed colour
-// stripes are printed across its width; they never travel. what travels is
-// a twist along its length. where the flag turns edge on, the stripes
-// foreshorten into each other and the seams between them burn; where it
-// faces you they spread out and go transparent. press D for the dials.
+// a real ribbon in space. a centre line runs through x, y and z, a frame
+// rolls along it, and the cloth is the strip that frame sweeps. it is
+// walked in 3D and projected through a camera, so folds, crossings and
+// perspective are the geometry doing its job, not effects laid on top.
+//
+// the colour stripes are printed across the cloth and never move. what
+// reads as motion is the surface turning: where it faces you the stripes
+// lie wide and thin, where it turns edge on the same strip lands in a few
+// pixels and the seams burn. press D for the dials.
 const canvas = document.getElementById('c');
 const gl = canvas.getContext('webgl', { antialias: false });
 
@@ -45,11 +49,11 @@ precision highp float;
 varying vec2 vUv;
 uniform vec2 uRes;
 uniform float uTime;
-uniform float uLen, uWidth, uSag;
-uniform float uTwist, uTwistFreq, uSpeed, uSway, uSwayFreq;
-uniform float uBands, uSeam, uFill, uGraze, uGain, uFalloff;
+uniform float uLen, uWidth, uCam;
+uniform float uWaveY, uFreqY, uWaveZ, uFreqZ, uRoll, uFreqRoll, uSpeed;
+uniform float uBands, uSeam, uFill, uGraze, uGain, uThick, uEnds;
 
-// spectrum across the width of the flag. k = 0 red, k = 1 violet
+// spectrum printed across the cloth. k = 0 red, k = 1 violet
 vec3 spectral(float k) {
   vec3 red    = vec3(1.00, 0.22, 0.20);
   vec3 orange = vec3(1.00, 0.58, 0.18);
@@ -64,49 +68,89 @@ vec3 spectral(float k) {
   return   mix(dq,   blue,   smoothstep(0.80, 1.00, k));
 }
 
+// the centre line of the ribbon, in space
+vec3 spine(float s, float t) {
+  return vec3(
+    s * uLen,
+    uWaveY * sin(s * uFreqY - t),
+    uWaveZ * sin(s * uFreqZ - t * 0.7 + 1.3)
+  );
+}
+
+// its tangent, analytically
+vec3 spineT(float s, float t) {
+  return normalize(vec3(
+    uLen,
+    uWaveY * uFreqY * cos(s * uFreqY - t),
+    uWaveZ * uFreqZ * cos(s * uFreqZ - t * 0.7 + 1.3)
+  ));
+}
+
+// perspective. nearer is bigger, and that is the only reason it is
+vec2 project(vec3 p) {
+  return p.xy * (uCam / max(uCam - p.z, 0.05));
+}
+
 void main() {
   float aspect = uRes.x / uRes.y;
-  vec2 q = vec2((vUv.x - 0.5) * aspect, vUv.y - 0.5);
-
-  float x = q.x / uLen;                       // -1..1 along the flag
-  if (abs(x) > 1.3) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
-
-  // the flag waves on the spot: it does not travel across the screen.
-  // a slow sway for the centre line, and a twist running along the length
+  vec2 pix = vec2((vUv.x - 0.5) * aspect, vUv.y - 0.5);
   float t = uTime * uSpeed;
-  float centre = uSag * x
-               + uSway * sin(x * uSwayFreq - t * 0.9);
-  float tw = uTwist * sin(x * uTwistFreq - t);
 
-  // how much of the width you actually see. face on it is the full width,
-  // edge on it collapses to a line. this is the whole effect
-  float fore = abs(cos(tw));
-  float taper = pow(max(1.0 - x * x, 0.0), 0.35);   // the flag has ends
-  float hw = uWidth * fore * taper;
-  if (hw < 1e-5) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  vec3 col = vec3(0.0);
+  float sig = max(uThick, 0.001);
 
-  float v = (q.y - centre) / hw;             // -1..1 across the flag
-  float av = abs(v);
-  if (av > 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  // walk the ribbon along its length. every step is one rib of cloth,
+  // projected to the screen as a segment; the pixel asks each rib whether
+  // it lands on it and how much cloth it is looking at
+  for (int i = 0; i < 96; i++) {
+    float s = (float(i) / 95.0) * 2.0 - 1.0;
 
-  // fixed stripes printed on the cloth. they never move on their own
-  float k = (v * 0.5 + 0.5);
-  vec3 hue = spectral(k);
+    vec3 C = spine(s, t);
+    vec3 T = spineT(s, t);
+    // a frame that rolls along the length. this is the twist, in 3D
+    vec3 W0 = normalize(cross(T, vec3(0.0, 0.0, 1.0)));
+    vec3 N0 = cross(W0, T);
+    float roll = uRoll * sin(s * uFreqRoll - t * 1.1);
+    vec3 W = W0 * cos(roll) + N0 * sin(roll);
 
-  // the seams between colours. one screen pixel covers more of the cloth
-  // when the flag is edge on, so the seams pile up and burn there
-  float p = k * uBands;
-  float seam = abs(fract(p) - 0.5) * 2.0;      // 1 at a seam, 0 mid stripe
-  float dens = 1.0 / max(fore, 0.06);          // foreshortening
+    // the cloth narrows toward the two ends
+    float taper = pow(max(1.0 - s * s, 0.0), uEnds);
+    float hw = uWidth * taper;
+    if (hw < 1e-5) continue;
 
-  float body = uFill * pow(1.0 - av * av, uFalloff);
-  float edge = uSeam * pow(seam, 6.0);
-  float graze = uGraze * pow(av, 5.0);         // the silhouette of the cloth
+    vec2 a = project(C - W * hw);
+    vec2 b = project(C + W * hw);
+    vec2 m = (a + b) * 0.5;
+    vec2 e = (b - a) * 0.5;
+    float len = length(e);
+    if (len < 1e-5) continue;
+    vec2 dir = e / len;
 
-  vec3 col = hue * (body + edge) * dens + vec3(1.0, 0.99, 0.97) * graze * dens * 0.5;
-  col *= uGain * taper;
+    vec2 rel = pix - m;
+    float v = dot(rel, dir) / len;             // -1..1 across the cloth
+    if (abs(v) > 1.0) continue;
+    float perp = abs(rel.x * dir.y - rel.y * dir.x);
 
-  gl_FragColor = vec4(col, 1.0);
+    // how much cloth this pixel is looking at. a short projected rib is
+    // the same strip squeezed into fewer pixels, so it reads brighter.
+    // nothing here is painted: it is the surface turning away
+    float dens = 1.0 / max(len, 0.004);
+    float kern = exp(-(perp * perp) / (sig * sig));
+
+    float k = v * 0.5 + 0.5;
+    float seam = abs(fract(k * uBands) - 0.5) * 2.0;
+    float av = abs(v);
+
+    vec3 hue = spectral(k);
+    float body = uFill * (1.0 - av * av);
+    float edge = uSeam * pow(seam, 5.0);
+    float graze = uGraze * pow(av, 6.0);
+
+    col += (hue * (body + edge) + vec3(1.0, 0.99, 0.97) * graze)
+         * kern * dens * taper;
+  }
+
+  gl_FragColor = vec4(col * uGain * 0.02, 1.0);
 }`;
 
 function compile(type, src) {
@@ -133,9 +177,11 @@ const uTime = gl.getUniformLocation(prog, 'uTime');
 
 // press D for the panel
 const DEFAULTS = {
-  len: 0.34, width: 0.075, sag: 0.03,
-  twist: 1.35, twistFreq: 2.20, speed: 0.60, sway: 0.030, swayFreq: 1.60,
-  bands: 6.0, seam: 0.30, fill: 0.60, graze: 0.55, gain: 1.2, falloff: 0.60
+  len: 0.34, width: 0.075, cam: 1.6,
+  waveY: 0.030, freqY: 2.0, waveZ: 0.090, freqZ: 1.6,
+  roll: 0.90, freqRoll: 1.8, speed: 0.55,
+  bands: 6, seam: 0.30, fill: 0.60, graze: 0.55,
+  gain: 2.6, thick: 0.007, ends: 0.35
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('waveTune') || '{}'));
 const U = {};
@@ -161,11 +207,12 @@ requestAnimationFrame(frame);
 
 // ---- tuning panel ----
 const RANGES = {
-  len: [0.1, 0.9, 0.01], width: [0.005, 0.3, 0.002], sag: [-0.2, 0.2, 0.005],
-  twist: [0, 3.14, 0.02], twistFreq: [0, 8, 0.05], speed: [0, 3, 0.02],
-  sway: [0, 0.2, 0.002], swayFreq: [0, 8, 0.05],
-  bands: [2, 14, 1], seam: [0, 2, 0.01], fill: [0, 2, 0.01],
-  graze: [0, 2, 0.01], gain: [0, 3, 0.02], falloff: [0.1, 4, 0.05]
+  len: [0.1, 0.9, 0.01], width: [0.005, 0.3, 0.002], cam: [0.4, 6, 0.05],
+  waveY: [0, 0.25, 0.002], freqY: [0, 8, 0.05],
+  waveZ: [0, 0.4, 0.005], freqZ: [0, 8, 0.05],
+  roll: [0, 3.14, 0.02], freqRoll: [0, 8, 0.05], speed: [0, 3, 0.02],
+  bands: [2, 14, 1], seam: [0, 2, 0.01], fill: [0, 2, 0.01], graze: [0, 2, 0.01],
+  gain: [0, 4, 0.02], thick: [0.0005, 0.02, 0.0005], ends: [0.05, 2, 0.05]
 };
 const panel = document.getElementById('tune');
 let html = '';
