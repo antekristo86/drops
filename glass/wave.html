@@ -50,10 +50,10 @@ varying vec2 vUv;
 uniform vec2 uRes;
 uniform float uTime;
 uniform float uLen, uHeight, uEye, uTilt;
-uniform float uRot, uLagg, uBelly, uWob;
-uniform float uThick, uGlow, uMelt, uGain, uSheen, uSheenW, uSpeed;
+uniform float uRot, uTwist, uSlack, uBelly;
+uniform float uHueSpread, uFill, uEdge, uGlow, uGain, uSpeed;
 
-// stripes printed across the sheet. k = 0 red, k = 1 violet
+// the foil's spectrum. k = 0 red, k = 1 violet
 vec3 spectral(float k) {
   vec3 red    = vec3(1.00, 0.22, 0.20);
   vec3 orange = vec3(1.00, 0.58, 0.18);
@@ -68,66 +68,70 @@ vec3 spectral(float k) {
   return   mix(dq,   blue,   smoothstep(0.80, 1.00, k));
 }
 
+// iridescence: the colour is the angle. nothing is printed on the sheet;
+// turn it and the spectrum sweeps across it
+vec3 foil(float ang) {
+  return spectral(0.5 + 0.5 * sin(ang));
+}
+
 void main() {
   float aspect = uRes.x / uRes.y;
   vec2 q = vec2((vUv.x - 0.5) * aspect, vUv.y - 0.5);
   float t = uTime * uSpeed;
 
-  // a bedsheet held at its two short ends, turned in one steady motion.
-  // the hands set the pace; the middle of the cloth trails behind them,
-  // so the turn runs along the sheet as a wave. that lag is the wave
+  // one sheet, held at its two short ends and turned in a steady motion.
+  // uRot is the hands, uTwist the standing twist between them, uSlack the
+  // cloth trailing behind, uBelly the slack middle swinging around
   float x = q.x / uLen;                        // -1..1 along the sheet
   float taperX = pow(max(1.0 - x * x, 0.0), uEye);
   if (taperX < 1e-3) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
-  float env = uHeight * (0.30 + 0.70 * taperX);
+  float env = uHeight * (0.25 + 0.75 * taperX);
 
-  float theta = t * uRot - uLagg * (1.0 - x * x)
-              + uWob * sin(x * 2.1 - t * 0.33);
-  float cs = cos(theta), sn = sin(theta);
+  float theta = t * uRot + x * uTwist
+              + uSlack * sin(x * 1.3 - t * 0.45)
+              - 0.6 * (1.0 - x * x);
+  float cs = cos(theta);
+  float acs = abs(cs);
 
-  // the slack in the middle swings around the axis with the turn
-  float centre = uTilt * x + uBelly * (1.0 - x * x) * sn;
+  float centre = uTilt * x + uBelly * (1.0 - x * x) * sin(theta);
+
+  // where this pixel sits across the cloth. outside the two hems there is
+  // no cloth, only their glow
+  float W = env * max(acs, 0.035);             // projected half-width
+  float w = (q.y - centre) / W;                // -1..1 across the sheet
+
+  // the colour of the surface right here: the twist angle, shifted a
+  // little across the width, so the sweep runs diagonally over the cloth
+  vec3 hueF = foil(theta + w * uHueSpread);
 
   vec3 col = vec3(0.0);
 
-  // six stripes at fixed positions across the cloth. the turn carries
-  // them: face on they lie apart, translucent; edge on the whole print
-  // lands on one line and burns white; through the flip the order
-  // mirrors, which is why the top colour keeps changing. brightness is
-  // flux over width, never painted
-  for (int i = 0; i < 6; i++) {
-    float k = float(i) / 5.0;
-    float w = (k - 0.5) * 2.0;                 // place on the cloth
-
-    float y = centre + env * w * cs;
-    float z = w * sn;                          // toward or away from you
-
-    float fat = k < 0.45 ? 1.45 : 1.0;
-    float sigma = max(env * uThick * (0.10 + 0.90 * abs(cs)) * fat, 0.0012);
-    float amp = 0.011 / sigma;                 // constant flux
-
-    float d = q.y - y;
-    float sg = d < 0.0 ? sigma * (1.0 + uMelt) : sigma;
-    float core = exp(-d * d / (2.0 * sg * sg));
-    float glow = exp(-d * d / (18.0 * sg * sg));
-    float a = core + uGlow * glow * 0.30;
-
-    // the far half of the cloth is seen through the near half
-    float vis = 0.72 + 0.28 * smoothstep(-0.9, 0.9, z);
-
-    vec3 tone = mix(spectral(k), vec3(1.0), 0.04);
-    vec3 strand = tone * a * amp * vis * taperX * uGain * 0.5;
-    col = 1.0 - (1.0 - col) * (1.0 - clamp(strand, 0.0, 1.0));
+  if (abs(w) < 1.0) {
+    // the face: translucent, brightest where it stands near edge-on and
+    // packs its light into a narrow strip. flux over width, not paint
+    float grazing = 1.0 - acs;
+    float faceAmp = uFill * (0.45 + 0.55 * grazing * grazing) / max(acs, 0.10);
+    float across = 1.0 - w * w * 0.35;         // slightly denser mid-cloth
+    col += hueF * faceAmp * across * 0.55;
   }
 
-  // the light on the cloth: a warm heart that rides the turning belly
-  float xs = 0.45 * sin(t * 0.27) - 0.15;
-  float sx = exp(-pow((x - xs) / max(uSheenW, 0.05), 2.0));
-  float yg = centre + env * (-0.2) * cs;
-  float sd = (q.y - yg) / max(env * 0.38, 1e-4);
-  float sy = exp(-sd * sd);
-  vec3 sheen = vec3(1.0, 0.97, 0.90) * sx * sy * uSheen * taperX;
-  col = 1.0 - (1.0 - col) * (1.0 - clamp(sheen, 0.0, 1.0));
+  // the two hems: thin bright lines of the same foil colour, burning
+  // hardest where the sheet turns edge-on and both fall onto one line
+  float dTop = q.y - (centre + env * cs);
+  float dBot = q.y - (centre - env * cs);
+  float sig  = 0.0018 + 0.010 * env * acs;
+  float hem  = exp(-dTop * dTop / (2.0 * sig * sig))
+             + exp(-dBot * dBot / (2.0 * sig * sig));
+  float hemGlow = exp(-dTop * dTop / (30.0 * sig * sig))
+                + exp(-dBot * dBot / (30.0 * sig * sig));
+  float burn = 1.0 / max(acs, 0.10);
+  vec3 hueT = foil(theta + uHueSpread);
+  vec3 hueB = foil(theta - uHueSpread);
+  col += (hueT * exp(-dTop * dTop / (2.0 * sig * sig))
+        + hueB * exp(-dBot * dBot / (2.0 * sig * sig))) * uEdge * 0.35 * burn;
+  col += (hueT + hueB) * 0.5 * hemGlow * uGlow * 0.06 * burn;
+
+  col *= taperX * uGain;
 
   // soften into white instead of clipping into neon
   col = 1.0 - exp(-col * 1.25);
@@ -160,9 +164,9 @@ const uTime = gl.getUniformLocation(prog, 'uTime');
 // press D for the panel
 const DEFAULTS = {
   len: 0.38, height: 0.075, eye: 0.45, tilt: -0.02,
-  rot: 0.55, lagg: 1.35, belly: 0.020, wob: 0.20,
-  thick: 0.12, glow: 0.35, melt: 0.45, gain: 1.05,
-  sheen: 0.45, sheenW: 0.45, speed: 1.0
+  rot: 0.45, twist: 1.4, slack: 0.35, belly: 0.020,
+  hueSpread: 1.1, fill: 0.70, edge: 1.0, glow: 1.2,
+  gain: 1.0, speed: 1.0
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('waveTune') || '{}'));
 const U = {};
@@ -190,9 +194,9 @@ requestAnimationFrame(frame);
 const RANGES = {
   len: [0.1, 0.9, 0.01], height: [0.02, 0.25, 0.002], eye: [0.1, 2, 0.02],
   tilt: [-0.3, 0.3, 0.005],
-  rot: [0, 3, 0.01], lagg: [0, 4, 0.02], belly: [0, 0.12, 0.001], wob: [0, 1.5, 0.01],
-  thick: [0.05, 1.5, 0.01], glow: [0, 3, 0.02], melt: [0, 3, 0.02],
-  gain: [0, 3, 0.02], sheen: [0, 2, 0.01], sheenW: [0.1, 2, 0.01], speed: [0, 3, 0.02]
+  rot: [0, 3, 0.01], twist: [0, 6, 0.02], slack: [0, 2, 0.02], belly: [0, 0.12, 0.001],
+  hueSpread: [0, 3, 0.02], fill: [0, 2, 0.01], edge: [0, 3, 0.02], glow: [0, 3, 0.02],
+  gain: [0, 3, 0.02], speed: [0, 3, 0.02]
 };
 const panel = document.getElementById('tune');
 let html = '';
