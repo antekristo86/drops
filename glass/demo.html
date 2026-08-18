@@ -89,6 +89,7 @@ uniform float uHover;    // springed 0..1, the aurora breathes in on hover
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uDeform;    // squash and stretch, from the physics
+uniform vec2 uSlosh;     // the fill inside: tilt and lift, it lags the motion
 
 // a rectangle with rounded corners. exact sdf
 float lensField(vec2 q, vec2 c, float r) {
@@ -217,7 +218,10 @@ void main() {
 
     // the body is smoked at the top and clears toward the bottom.
     float hh = uR * uShapeH * (1.0 + uDeform.y) * uScale;
-    float up = (q.y - c.y) / hh;                 // -1 bottom, +1 top
+    // the fill is liquid, not paint. its surface tilts under sideways
+    // acceleration and lifts under vertical, always a beat behind the
+    // body, and it settles on the same clock as the jelly
+    float up = ((q.y - c.y) + uSlosh.x * (q.x - c.x)) / hh + uSlosh.y;
     // wide and eased twice. a narrow ramp reads as an overlay, a long
     // one reads as tinted material. never fully black, the body keeps depth
     float smoke = smoothstep(-0.95 + uSmokePos, 1.0 + uSmokePos, up);
@@ -333,6 +337,7 @@ const uLens = gl.getUniformLocation(prog, 'uLens');
 const uRU = gl.getUniformLocation(prog, 'uR');
 const uDeform = gl.getUniformLocation(prog, 'uDeform');
 const uHover = gl.getUniformLocation(prog, 'uHover');
+const uSlosh = gl.getUniformLocation(prog, 'uSlosh');
 
 // ============================================================
 // physics. the glass is a thing you can throw. while dragging it
@@ -345,6 +350,9 @@ let lx = 0.5, ly = 0.5, vx = 0, vy = 0;
 let tx = 0.5, ty = 0.5;          // where the hand wants it
 let dX = 0, dXv = 0;             // squash springs, one per axis
 let dY = 0, dYv = 0;
+let slX = 0, slXv = 0;           // the fill: tilt and lift, spring state
+let slY = 0, slYv = 0;
+let pvx = 0, pvy = 0, axS = 0, ayS = 0;
 
 let scale = 1, scaleT = 1, scaleV = 0;
 // the aurora breathes in on hover instead of switching on
@@ -429,6 +437,22 @@ function physics(dt) {
   if (ly < hh)     { ly = hh;     if (vy < 0) { dYv -= Math.min(-vy * kick, 3); dXv += Math.min(-vy * kick * 0.7, 2); vy = -vy * rest; } }
   if (ly > 1 - hh) { ly = 1 - hh; if (vy > 0) { dYv -= Math.min(vy * kick, 3);  dXv += Math.min(vy * kick * 0.7, 2);  vy = -vy * rest; } }
 
+  // the fill sloshes. acceleration is read off the velocity change,
+  // smoothed a touch; a wall bounce flips the velocity and shows up
+  // here as a spike, so the overspill after an impact comes for free
+  if (dt > 0) {
+    const ax = (vx - pvx) / dt, ay = (vy - pvy) / dt;
+    const f = Math.min(dt * 12, 1);
+    axS += (ax - axS) * f;
+    ayS += (ay - ayS) * f;
+  }
+  pvx = vx; pvy = vy;
+  const sk = 70, sd = 2 * Math.sqrt(70) * 0.4;
+  const stX = Math.max(-0.5, Math.min(0.5, -axS * 0.012));
+  const stY = Math.max(-0.25, Math.min(0.25, -ayS * 0.006));
+  slXv += (-sk * (slX - stX) - sd * slXv) * dt; slX += slXv * dt;
+  slYv += (-sk * (slY - stY) - sd * slYv) * dt; slY += slYv * dt;
+
   // the jelly. underdamped on purpose, it should ring a few times.
   // while held, its rest point sits below zero: the button is pressed
   // in, stays pressed, and springs out of the same system on release
@@ -491,6 +515,8 @@ function frame(t) {
   gl.uniform1f(uRU, 0.13);
   const [ux, uy] = deformNow();
   gl.uniform2f(uDeform, ux, uy);
+  gl.uniform2f(uSlosh, Math.max(-0.8, Math.min(0.8, slX)),
+                       Math.max(-0.4, Math.min(0.4, slY)));
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   requestAnimationFrame(frame);
 }
