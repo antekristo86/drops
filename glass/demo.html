@@ -513,8 +513,8 @@ function physics(dt) {
     // starts there, so it visibly pushes out of the glass; the recall
     // dives all the way back in before anything shrinks
     const inX = lx + ex * hw * 0.45, inY = ly + ey * hh * 0.45;
-    const tx2 = dropHome ? inX : lx + ex * (hw + RAD * 1.6);
-    const ty2 = dropHome ? inY : ly + ey * (hh + RAD * 1.6);
+    const tx2 = dropHome ? inX : lx + ex * (hw + RAD * 1.28);
+    const ty2 = dropHome ? inY : ly + ey * (hh + RAD * 1.28);
     if (dropOn || dropHome) {
       const bk = 210, bd = 2 * Math.sqrt(bk) * 0.55;
       bvx += (bk * (tx2 - bx) - bd * bvx) * dt;
