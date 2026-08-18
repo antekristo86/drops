@@ -224,7 +224,8 @@ void main() {
     vec2 hs = vec2(uR * uShapeW * (1.0 + uDeform.x),
                    uR * uShapeH * (1.0 + uDeform.y)) * uScale;
     vec2 u = (q - c) / hs;
-    float r = min(pow(pow(abs(u.x), 6.0) + pow(abs(u.y), 6.0), 1.0 / 6.0), 1.0);
+    float rRaw = pow(pow(abs(u.x), 6.0) + pow(abs(u.y), 6.0), 1.0 / 6.0);
+    float r = min(rRaw, 1.0);
     vec2 dir = length(u) > 1e-5 ? normalize(u) : vec2(0.0);
 
     // inside a droplet, that droplet is the lens. a soft handover in
@@ -238,7 +239,7 @@ void main() {
       if (uDropRs[i] < 1e-4) continue;
       vec2 dc = vec2(uDrops[i].x * aspect, uDrops[i].y);
       float rD = length(q - dc) / uDropRs[i];
-      float wD = smoothstep(0.12, -0.12, rD - r);
+      float wD = smoothstep(0.12, -0.12, rD - rRaw);
       if (wD > 0.001) {
         vec2 dirD = length(q - dc) > 1e-5 ? normalize(q - dc) : vec2(0.0);
         r = mix(r, min(rD, 1.0), wD);
@@ -359,11 +360,38 @@ void main() {
       hovR = uDropHov[i]; selPh = (float(i) + 1.0) * 2.13; selSc = 2.3;
     }
   }
-  vec4 gfr = glowField(atan(ur.y, ur.x) * selSc + selPh, uTime);
-  float aglow = uAurora * hovR * gfr.a;
-  vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), gfr.rgb, clamp(aglow * 1.1, 0.0, 1.0));
-  col += gfr.rgb * band * aglow * 0.55;
-  col += gfr.rgb * wall * aglow * 0.17;
+  // every body tints the edge itself, with its own hover and its own
+  // frame, weighted by its own distance, and the contributions add like
+  // light. a nearest-owner switch prints a hard seam at every
+  // equidistant point between two bodies; a sum cannot
+  vec3 tint = vec3(0.0);
+  float tintL = 0.0;
+  for (int j = 0; j < 4; j++) {
+    vec2 srcP; float srcHov; float srcR; float srcPh; float srcSc; float dB;
+    if (j == 0) {
+      srcP = c; srcHov = uHover; srcR = hsr.y; srcPh = 0.0; srcSc = 1.0;
+      dB = lensField(q, c, uR);
+    } else {
+      if (uDropRs[j - 1] < 1e-4) continue;
+      srcP = vec2(uDrops[j - 1].x * aspect, uDrops[j - 1].y);
+      srcHov = uDropHov[j - 1];
+      srcR = uDropRs[j - 1];
+      srcPh = float(j) * 2.13; srcSc = 2.3;
+      dB = length(q - srcP) - srcR;
+    }
+    if (srcHov * uAurora < 0.004) continue;
+    float bandJ = smoothstep(px * 2.0, 0.0, abs(dB));
+    float wallJ = smoothstep(px * 16.0, 0.0, abs(dB));
+    if (bandJ + wallJ < 0.002) continue;
+    vec2 urJ = (q - srcP) / srcR;
+    vec4 gs = glowField(atan(urJ.y, urJ.x) * srcSc + srcPh, uTime);
+    float aj = uAurora * srcHov * gs.a;
+    tint += gs.rgb * (bandJ * aj * 0.55 + wallJ * aj * 0.17);
+    tintL += bandJ * aj;
+  }
+  col += tint;
+  float tMax = max(max(tint.r, tint.g), max(tint.b, 1e-4));
+  vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), tint / tMax, clamp(tintL * 1.1, 0.0, 1.0));
   // light transport: a shining body throws its light onto the others.
   // the stretch of rim facing the source catches exactly the hue the
   // source shows in this direction, and it dies with distance. no body
@@ -729,6 +757,7 @@ function physics(dt) {
       // out-activation: born right at the wall with a push outward
       if (dropOn && active && !D.live) {
         D.live = true;
+        D.met = false;
         D.bx = lx + (right ? hw - RAD * 0.10 : 0);
         D.by = ly + (right ? 0 : -(hh - RAD * 0.10));
         D.bvx = right ? 1.2 : 0;
@@ -740,7 +769,10 @@ function physics(dt) {
       const tx2 = goingOut ? slotX : inX;
       const ty2 = goingOut ? slotY : inY;
       if (D.live) {
-        const bk = 210, bd = 2 * Math.sqrt(bk) * 0.55;
+        // each circle is lazier than the one before it. dragging the
+        // row, they trail and whip instead of moving as one block
+        const bk = 200 * Math.pow(0.74, i);
+        const bd = 2 * Math.sqrt(bk) * 0.5;
         D.bvx += (bk * (tx2 - D.bx) - bd * D.bvx) * dt;
         D.bvy += (bk * (ty2 - D.by) - bd * D.bvy) * dt;
         // the wall is sticky: crossing it slows the body so the neck
