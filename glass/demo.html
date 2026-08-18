@@ -428,6 +428,8 @@ addEventListener('pointermove', e => {
   if (dragging) { tx = mx - grabX; ty = my - grabY; return; }
   const inside = overLens(mx, my);
   scaleT = inside ? 1.12 : 1;
+  // first contact gives the jelly a tiny shiver: it notices you
+  if (inside && !hovT) { dYv += 0.5; dXv -= 0.3; }
   hovT = inside ? 1 : 0;
   canvas.style.cursor = inside ? 'grab' : 'crosshair';
 });
