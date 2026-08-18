@@ -452,10 +452,11 @@ addEventListener('pointerup', e => {
       dropOn = true;
       dropHome = false;
       const right = 1 - (lx + hw) > hh * 3.2;
-      bx = lx + (right ? hw * 0.45 : 0);
-      by = ly + (right ? 0 : -hh * 0.45);
-      bvx = right ? 1.9 : 0;
-      bvy = right ? 0 : -1.9;
+      const RAD = lensHalf().hh;
+      bx = lx + (right ? hw - RAD * 0.35 : 0);
+      by = ly + (right ? 0 : -(hh - RAD * 0.35));
+      bvx = right ? 1.2 : 0;
+      bvy = right ? 0 : -1.2;
       dXv -= 0.7;              // the recoil of letting go
     } else {
       dropOn = false;
@@ -526,12 +527,14 @@ function physics(dt) {
         dXv += 0.9; dYv -= 0.5;
       }
     }
-    // the radius rides on position, not on time: small while deep in
-    // the body, so no lump travels the silhouette, swelling to full as
-    // it crosses the wall. liquid gathers at the exit
+    // asymmetric on purpose. going out, the droplet is born right at
+    // the cap at full size: the cap swells as it grows, liquid pooling,
+    // then it pushes free. no visible scaling. coming home, the radius
+    // rides on position and the shrink hides inside the body
     const along = right ? Math.abs(bx - lx) / hw : Math.abs(by - ly) / hh;
     const swell = Math.min(Math.max((along - 0.35) / 0.80, 0), 1);
-    const radT = (dropOn || dropHome) ? RAD * (0.32 + 0.68 * swell) : 0;
+    const radT = dropHome ? RAD * (0.32 + 0.68 * swell)
+               : dropOn ? RAD : 0;
 
     // the tearing lives at the wall. right there the join turns gooey,
     // so the neck stretches long before it snaps, and the wall drags a
