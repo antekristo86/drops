@@ -446,7 +446,8 @@ function frame(t) {
 
   scaleV += (scaleT - scale) * 0.045 - scaleV * 0.26;
   scale += scaleV;
-  const ht = dragging ? 1 : hovT;
+  // grabbing kills the glow: hover is an invitation, holding is holding
+  const ht = dragging ? 0 : hovT;
   hovV += (ht - hov) * 0.030 - hovV * 0.24;
   hov += hovV;
   gl.uniform1f(uHover, Math.max(0, hov));
