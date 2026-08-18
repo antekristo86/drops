@@ -443,11 +443,11 @@ const uScale = gl.getUniformLocation(prog, 'uScale');
 // ante's numbers, dialled in by hand on 2026-08-18. don't touch them
 // without being asked
 const DEFAULTS = {
-  lightAngle: 2.0, lightPower: 0.8, refraction: 0.5, depth: 0.0,
+  lightAngle: 2.0, lightPower: 1.08, refraction: 0.5, depth: 0.0,
   dispersion: 0.06, frost: 0.0, splay: 7.3,
-  shapeW: 1.7, shapeH: 0.54, smoke: 1.0, smokePos: -0.28,
+  shapeW: 1.8, shapeH: 0.58, smoke: 1.0, smokePos: -0.28,
   shadow: 0.6, spacing: 1.0,
-  aurora: 0.18, auroraSpeed: 0.34, auroraRay: 0.43, bounce: 2.65, pool: 0.0
+  aurora: 0.14, auroraSpeed: 0.62, auroraRay: 0.74, bounce: 1.6, pool: 0.0
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
