@@ -444,15 +444,17 @@ addEventListener('pointermove', e => {
   const mx = e.clientX / innerWidth, my = 1 - e.clientY / innerHeight;
   if (dragging) { tx = mx - grabX; ty = my - grabY; return; }
   const inside = overLens(mx, my);
-  // first contact gives the jelly a kick, the rest-point change below
-  // does the growing. hover is the pressed state in reverse: same
-  // springs, same wobble, other direction
-  if (inside && !hovT) { dYv += 0.5; dXv += 0.4; }
+  // the kick carries the swell, the rest point only settles it. without
+  // the kick the spring ramps and hover feels heavy next to the rest of
+  // the jelly. leaving gets the opposite kick, same snap both ways
+  if (inside && !hovT) { dYv += 1.4; dXv += 1.1; }
+  if (!inside && hovT) { dYv -= 0.9; dXv -= 0.7; }
   hovT = inside ? 1 : 0;
   const di = overDrop(mx, my);
   for (let i = 0; i < ND; i++) {
     const D = drops[i];
-    if (i === di && !D.hovT) D.gV += 1.0;   // it notices you too
+    if (i === di && !D.hovT) D.gV += 1.9;   // it notices you too
+    if (i !== di && D.hovT) D.gV -= 1.2;    // and lets go just as fast
     D.hovT = i === di ? 1 : 0;
   }
   canvas.style.cursor = inside ? 'grab' : di >= 0 ? 'pointer' : 'crosshair';
