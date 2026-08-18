@@ -166,36 +166,35 @@ vec3 aurHue(float x) {
   return mix(mix(teal, blue, min(k * 2.0, 1.0)),
              violet, max(k * 2.0 - 1.0, 0.0));
 }
-// a comet is not a blob: a sharp front and a long tail trailing behind
-// its direction of travel. you can read where it is going from a still
-float comet(float a, float head, float sharp, float dirn) {
-  float d = mod(a - head + 3.14159, 6.28318) - 3.14159;
-  float front = exp((cos(d) - 1.0) * sharp);
-  float tail  = exp((cos(d) - 1.0) * sharp * 0.35)
-              * smoothstep(0.0, -2.2, d * dirn);
-  return front + tail * 0.5;
-}
+// no parade of rigid shapes on a rail. three waves travel the outline
+// at phrased, incommensurate speeds; their interference makes the
+// pools. because the waves slide against each other, a pool morphs as
+// it moves: it is born, stretches, merges, tears. nothing keeps its
+// shape, which is exactly what mechanical motion cannot do
 vec4 glowField(float ang, float t) {
   float ts = t * uAuroraSpeed;
+  float w1 = sin(ang * 2.0 - ts * 0.53 - 0.8 * sin(ts * 0.19));
+  float w2 = sin(ang * 3.0 + ts * 0.31 + 1.2 * sin(ts * 0.23 + 2.0));
+  float w3 = sin(ang * 1.0 - ts * 0.20 + 4.0);
+  float f = w1 * 0.55 + w2 * 0.35 + w3 * 0.45;
+  float amp = pow(clamp(f * 0.55 + 0.5, 0.0, 1.0), 3.0) * 1.6 + 0.10;
 
-  // phrased time, not clockwork: each comet travels, hesitates, catches
-  // up. the sine on top of the ramp is the hesitation
-  float h1 =  ts * 0.55 + 0.90 * sin(ts * 0.21 + 1.0) + 1.0;
-  float h2 = -ts * 0.38 + 0.70 * sin(ts * 0.13 + 3.1) + 3.5;
-  vec3 hue = aurHue(ang / 6.28318 - ts * 0.045 - 0.02 * sin(ts * 0.17));
-
-  float amp = 0.22
-            + 0.95 * comet(ang, h1, 5.0,  1.0)
-            + 0.70 * comet(ang, h2, 8.0, -1.0);
-
-  // a breath of irregular flicker. two incommensurate sines make an
-  // envelope that never repeats, three percent is all it takes
+  // a breath of irregular flicker on top, three percent, never repeating
   amp *= 0.97 + 0.03 * sin(t * 6.1) * sin(t * 4.3 + 1.0);
 
-  // where the light piles up it burns toward white. the colour lives on
-  // the flanks, the core is hot
+  // the hue rides the wheel but the field warps it, so colour and light
+  // belong to each other instead of passing each other by
+  vec3 hue = aurHue(ang / 6.28318 - ts * 0.045 + 0.10 * w2);
   hue = mix(hue, vec3(1.0), min(amp * amp * 0.10, 0.30));
   return vec4(hue, amp);
+}
+
+// how deep the light spills into the body, morphing on its own clock:
+// sometimes it hugs the rim, sometimes it reaches in
+float reachMod(float ang, float t) {
+  float ts = t * uAuroraSpeed;
+  return 0.65 + 0.45 * sin(ang * 2.0 + ts * 0.26 + 2.6)
+              * sin(ang * 1.0 - ts * 0.17);
 }
 
 void main() {
@@ -297,7 +296,7 @@ void main() {
     vec2 uL = (q - ce) / hs;
     float ga = atan(uL.y, uL.x);
     vec4 gf = glowField(ga + bodyPh, uTime);
-    float reach = uAuroraRay * (0.7 + 0.5 * gf.a);
+    float reach = uAuroraRay * (0.55 + 0.45 * gf.a) * reachMod(ga + bodyPh, uTime);
     float glow = pow(smoothstep(1.0 - reach, 1.0, r), 1.6)
                * gf.a * uAurora * hovG;
     col += gf.rgb * glow * 0.62;
