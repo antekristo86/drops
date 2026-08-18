@@ -740,7 +740,10 @@ function physics(dt) {
       const tx2 = goingOut ? slotX : inX;
       const ty2 = goingOut ? slotY : inY;
       if (D.live) {
-        const bk = 210, bd = 2 * Math.sqrt(bk) * 0.55;
+        // each circle is lazier than the one before it. dragging the
+        // row, they trail and whip instead of moving as one block
+        const bk = 200 * Math.pow(0.74, i);
+        const bd = 2 * Math.sqrt(bk) * 0.5;
         D.bvx += (bk * (tx2 - D.bx) - bd * D.bvx) * dt;
         D.bvy += (bk * (ty2 - D.by) - bd * D.bvy) * dt;
         // the wall is sticky: crossing it slows the body so the neck
