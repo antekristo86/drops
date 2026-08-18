@@ -239,19 +239,21 @@ void main() {
       if (uDropRs[i] < 1e-4) continue;
       vec2 dc = vec2(uDrops[i].x * aspect, uDrops[i].y);
       float rD = length(q - dc) / uDropRs[i];
-      // compare against the unclamped button radius: a pixel on a circle
-      // belongs to the circle entirely. clamped, every circle rim sat at
-      // fifty-fifty and borrowed half the button's hover glow
-      float wD = smoothstep(0.12, -0.12, rD - rRaw);
-      if (wD > 0.001) {
+      // two separate handovers. the refraction keeps the soft, clamped
+      // blend that the approved glass look is built on. the light gets
+      // the strict one: a pixel on a circle belongs to the circle, so
+      // the button's hover cannot lend every ring half its glow
+      float wD = smoothstep(0.12, -0.12, rD - r);
+      float wG = smoothstep(0.12, -0.12, rD - rRaw);
+      if (wD > 0.001 || wG > 0.001) {
         vec2 dirD = length(q - dc) > 1e-5 ? normalize(q - dc) : vec2(0.0);
         r = mix(r, min(rD, 1.0), wD);
         dir = normalize(mix(dir, dirD, wD));
         hs = mix(hs, vec2(uDropRs[i]), wD);
         ce = mix(c, dc, wD);
-        hovG = mix(hovG, uDropHov[i], wD);
-        bodyPh = mix(bodyPh, (float(i) + 1.0) * 2.13, wD);
-        dropW = mix(dropW, 1.0, wD);
+        hovG = mix(hovG, uDropHov[i], wG);
+        bodyPh = mix(bodyPh, (float(i) + 1.0) * 2.13, wG);
+        dropW = mix(dropW, 1.0, wG);
       }
     }
 
