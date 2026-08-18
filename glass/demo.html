@@ -210,6 +210,7 @@ void main() {
     // along: every body glows only for itself
     vec2 ce = c;
     float hovG = uHover;
+    float bodyPh = 0.0;      // every body shimmers on its own phase
     for (int i = 0; i < 3; i++) {
       if (uDropRs[i] < 1e-4) continue;
       vec2 dc = vec2(uDrops[i].x * aspect, uDrops[i].y);
@@ -222,6 +223,7 @@ void main() {
         hs = mix(hs, vec2(uDropRs[i]), wD);
         ce = mix(c, dc, wD);
         hovG = mix(hovG, uDropHov[i], wD);
+        bodyPh = mix(bodyPh, (float(i) + 1.0) * 2.13, wD);
       }
     }
 
@@ -272,7 +274,7 @@ void main() {
     // belongs to, gated by that body's own hover
     vec2 uL = (q - ce) / hs;
     float ga = atan(uL.y, uL.x);
-    vec4 gf = glowField(ga, uTime);
+    vec4 gf = glowField(ga + bodyPh, uTime);
     float reach = uAuroraRay * (0.7 + 0.5 * gf.a);
     float glow = pow(smoothstep(1.0 - reach, 1.0, r), 1.6)
                * gf.a * uAurora * hovG;
@@ -318,17 +320,49 @@ void main() {
   vec2 ur = (q - c) / hsr;
   float rSel = pow(pow(abs(ur.x), 6.0) + pow(abs(ur.y), 6.0), 1.0 / 6.0);
   float hovR = uHover;
+  float selPh = 0.0;
   for (int i = 0; i < 3; i++) {
     if (uDropRs[i] < 1e-4) continue;
     vec2 dc = vec2(uDrops[i].x * aspect, uDrops[i].y);
     float rD = length(q - dc) / uDropRs[i];
-    if (rD < rSel) { rSel = rD; ur = (q - dc) / uDropRs[i]; hovR = uDropHov[i]; }
+    if (rD < rSel) {
+      rSel = rD; ur = (q - dc) / uDropRs[i];
+      hovR = uDropHov[i]; selPh = (float(i) + 1.0) * 2.13;
+    }
   }
-  vec4 gfr = glowField(atan(ur.y, ur.x), uTime);
+  vec4 gfr = glowField(atan(ur.y, ur.x) + selPh, uTime);
   float aglow = uAurora * hovR * gfr.a;
   vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), gfr.rgb, clamp(aglow * 1.1, 0.0, 1.0));
   col += gfr.rgb * band * aglow * 0.55;
   col += gfr.rgb * wall * aglow * 0.17;
+  // light transport: a shining body throws its light onto the others.
+  // the stretch of rim facing the source catches exactly the hue the
+  // source shows in this direction, and it dies with distance. no body
+  // lights itself, that is what the glow above already did
+  for (int j = 0; j < 4; j++) {
+    vec2 srcP; float srcHov; float srcR; float srcPh;
+    if (j == 0) {
+      srcP = c; srcHov = uHover; srcR = hsr.y; srcPh = 0.0;
+    } else {
+      if (uDropRs[j - 1] < 1e-4) continue;
+      srcP = vec2(uDrops[j - 1].x * aspect, uDrops[j - 1].y);
+      srcHov = uDropHov[j - 1];
+      srcR = uDropRs[j - 1];
+      srcPh = float(j) * 2.13;
+    }
+    if (srcHov * uAurora < 0.004) continue;
+    if (abs(srcPh - selPh) < 0.01) continue;
+    vec2 toSrc = srcP - q;
+    float ds = length(toSrc);
+    if (ds < 1e-4) continue;
+    vec2 Ldir = toSrc / ds;
+    float facing2 = clamp(dot(nrm.xy, Ldir), 0.0, 1.0);
+    float fall = exp(-max(ds - srcR, 0.0) * 6.0);
+    vec4 gs = glowField(atan(-Ldir.y, -Ldir.x) + srcPh, uTime);
+    vec3 lc = gs.rgb * gs.a * srcHov * uAurora * facing2 * fall;
+    col += lc * (band * 0.85 + wall * 0.25);
+  }
+
   // the light does not stop at the wall: where a pool stands, a soft
   // bloom breathes past the rim into the dark. two widths layered, a
   // tight hot seam and a wide faint veil, which is what real bloom is
