@@ -494,8 +494,6 @@ let dropHome = false;            // heading back in
 let phaseT = 0;                  // when the last toggle happened
 let sh = 0, shV = 0;             // the centring shift, springed
 let actLvl = 0;                  // the aurora burns only while the fleet moves
-let pmx = 0.5, pmy = 0.62;       // where the hand is
-let lpx = 0.42, lpy = 0.62;      // the lamp glides after it
 let homeXg = 0.5, homeYg = 0.5;  // where home is right now
 let neck = 0.05;
 
@@ -529,7 +527,6 @@ function overLens(mx, my) {
 
 addEventListener('pointermove', e => {
   const mx = e.clientX / innerWidth, my = 1 - e.clientY / innerHeight;
-  pmx = mx; pmy = my;
   if (dragging) { tx = mx - grabX; ty = my - grabY; return; }
   const inside = overLens(mx, my);
   // the kick carries the swell, the rest point only settles it. without
