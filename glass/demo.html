@@ -74,7 +74,8 @@ uniform float uTime;
 uniform vec2  uPan;      // background drift
 uniform float uScale;    // grows on hover
 // glass, figma's model: every dial does exactly one thing
-uniform float uLightAngle, uLightPower;   // where the light stands, how hard
+uniform vec2 uLightPos;  // the cursor, in q space. the light IS the cursor
+uniform float uLightPower;                // how hard it shines
 uniform float uRefraction;                // how far the ray is pushed
 uniform float uDepth;                     // body thickness, drives magnification
 uniform float uDispersion;                // spectral split
@@ -301,7 +302,10 @@ void main() {
   // the rim is not a stroke. it is the lit edge of a body with thickness:
   // a bright band where the surface turns into the light, fading to
   // nothing on the far side, plus a soft inner falloff for the wall
-  vec3 L = normalize(vec3(cos(uLightAngle), sin(uLightAngle), 0.42));
+  // not a fixed studio light: the pointer is the lamp. every stretch of
+  // every rim lights up exactly where it faces the cursor, and the
+  // highlight walks over the glass as the hand moves
+  vec3 L = normalize(vec3(uLightPos - q, 0.42));
   vec3 nrm = normalize(vec3(g / gm, 0.5));
   float facing = clamp(dot(nrm, L), 0.0, 1.0);
 
@@ -443,11 +447,11 @@ const uScale = gl.getUniformLocation(prog, 'uScale');
 // ante's numbers, dialled in by hand on 2026-08-18. don't touch them
 // without being asked
 const DEFAULTS = {
-  lightAngle: 2.0, lightPower: 0.8, refraction: 0.5, depth: 0.0,
+  lightPower: 0.8, refraction: 0.5, depth: 0.0,
   dispersion: 0.06, frost: 0.0, splay: 7.3,
   shapeW: 1.7, shapeH: 0.54, smoke: 1.0, smokePos: -0.28,
   shadow: 0.6, spacing: 1.0,
-  aurora: 0.18, auroraSpeed: 0.34, auroraRay: 0.43, bounce: 2.65, pool: 0.0
+  aurora: 0.55, auroraSpeed: 0.34, auroraRay: 0.43, bounce: 2.65, pool: 0.0
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
@@ -459,6 +463,7 @@ const uDrops = gl.getUniformLocation(prog, 'uDrops');
 const uDropRs = gl.getUniformLocation(prog, 'uDropRs');
 const uNeckU = gl.getUniformLocation(prog, 'uNeck');
 const uHover = gl.getUniformLocation(prog, 'uHover');
+const uLightPos = gl.getUniformLocation(prog, 'uLightPos');
 const uDropHov = gl.getUniformLocation(prog, 'uDropHov');
 
 // ============================================================
@@ -488,6 +493,7 @@ let dropOn = false;              // do they want to be out
 let dropHome = false;            // heading back in
 let phaseT = 0;                  // when the last toggle happened
 let sh = 0, shV = 0;             // the centring shift, springed
+let actLvl = 0;                  // the aurora burns only while the fleet moves
 let homeXg = 0.5, homeYg = 0.5;  // where home is right now
 let neck = 0.05;
 
@@ -718,6 +724,10 @@ function physics(dt) {
       D.hv += (D.hovT - D.hv) * Math.min(dt * 6, 1);
     }
     if (dropHome && !anyLive) dropHome = false;
+    // the light of the event: it rises when the birth or the return
+    // begins and dies once everything has settled
+    const busy = dropHome || (dropOn && tNow - phaseT < ND * 140 + 900);
+    actLvl += ((busy ? 1 : 0) - actLvl) * Math.min(dt * 5, 1);
     const neckT = 0.05 + 0.085 * maxZone * ((dropOn || dropHome) ? 1 : 0);
     neck += (neckT - neck) * Math.min(dt * 10, 1);
   }
@@ -772,11 +782,12 @@ function frame(t) {
   scaleV += (scaleT - scale) * 0.045 - scaleV * 0.26;
   scale += scaleV;
   // grabbing kills the glow: hover is an invitation, holding is holding
-  const ht = dragging ? 0 : hovT;
-  hovV += (ht - hov) * 0.030 - hovV * 0.24;
-  hov += hovV;
-  gl.uniform1f(uHover, Math.max(0, hov));
-  gl.uniform1fv(uDropHov, drops.map(D => Math.max(0, D.hv)));
+  gl.uniform1f(uHover, actLvl);
+  gl.uniform1fv(uDropHov, drops.map(D => D.live ? actLvl : 0));
+  const arQ = canvas.width / canvas.height;
+  lpx += (pmx * arQ - lpx) * 0.12;
+  lpy += (pmy - lpy) * 0.12;
+  gl.uniform2f(uLightPos, lpx, lpy);
   gl.uniform1f(uScale, scale);
   for (const k in DEFAULTS) gl.uniform1f(U[k], P[k]);
   // the artwork drifts slowly, so its light-to-dark edge crosses the lens
@@ -799,7 +810,7 @@ requestAnimationFrame(frame);
 
 // ---- tuning panel ----
 const RANGES = {
-  lightAngle: [0, 6.28, 0.02], lightPower: [0, 2, 0.02], refraction: [0, 2.5, 0.01],
+  lightPower: [0, 2, 0.02], refraction: [0, 2.5, 0.01],
   depth: [0, 2, 0.02], dispersion: [0, 0.06, 0.001], frost: [0, 1, 0.01],
   splay: [1.5, 10, 0.1],
   shapeW: [0.5, 4, 0.05], shapeH: [0.2, 2, 0.02], smoke: [0, 1, 0.01],
