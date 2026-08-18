@@ -405,6 +405,7 @@ let dropOn = false;              // do they want to be out
 let dropHome = false;            // heading back in
 let phaseT = 0;                  // when the last toggle happened
 let sh = 0, shV = 0;             // the centring shift, springed
+let homeXg = 0.5, homeYg = 0.5;  // where home is right now
 let neck = 0.05;
 
 let scale = 1, scaleT = 1, scaleV = 0;
@@ -480,6 +481,7 @@ function physics(dt) {
   shV += (shk * (shT - sh) - shd * shV) * dt;
   sh += shV * dt;
   const homeX = 0.5 - exA * sh, homeY = 0.5 - eyA * sh;
+  homeXg = homeX; homeYg = homeY;
   const hx = lx - homeX, hy = ly - homeY;
   const pull = Math.hypot(hx, hy);
   const ka = 150 + 2400 * pull * pull;
@@ -598,8 +600,10 @@ function physics(dt) {
 function deformNow() {
   // held off centre it stretches like taffy along the pull; moving fast
   // it stretches along the motion. both read straight off the state
-  const sx = Math.min(Math.abs(vx) * 0.22, 0.20) + Math.min(Math.abs(lx - 0.5) * 0.9, 0.22);
-  const sy = Math.min(Math.abs(vy) * 0.22, 0.20) + Math.min(Math.abs(ly - 0.5) * 0.9, 0.22);
+  // measured from where home is now, not from the screen centre: the
+  // centring slide must not read as a pull
+  const sx = Math.min(Math.abs(vx) * 0.22, 0.20) + Math.min(Math.abs(lx - homeXg) * 0.9, 0.22);
+  const sy = Math.min(Math.abs(vy) * 0.22, 0.20) + Math.min(Math.abs(ly - homeYg) * 0.9, 0.22);
   const ux = Math.max(-0.30, Math.min(0.35, dX + sx - sy * 0.6));
   const uy = Math.max(-0.30, Math.min(0.35, dY + sy - sx * 0.6));
   return [ux, uy];
