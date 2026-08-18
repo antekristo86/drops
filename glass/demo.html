@@ -130,29 +130,34 @@ vec3 spectral(float k) {
   return   mix(dq,   blue,   smoothstep(0.80, 1.00, k));
 }
 
-// the hover glow, thin-film style. a rotating rainbow is the cheapest
-// trick there is, so instead: a slow interference field runs along the
-// outline. light collects in a few travelling pools, parts of the rim
-// stay dark, and hue and brightness ride the same phase, the way film
-// thickness drives both on a soap bubble. incommensurate frequencies,
-// so the pattern never visibly repeats
-vec4 glowField(float ang, float t) {
+// the rim aurora. colour flows around the outline for real: a cyclic
+// hue wheel travels one way, and two bright comets with soft tails orbit
+// at their own speeds, one against the stream. everything is periodic in
+// the outline angle, so the loop never shows a seam
+vec3 aurHue(float x) {
+  vec3 cyan    = vec3(0.25, 0.90, 1.00);
+  vec3 blue    = vec3(0.30, 0.45, 1.00);
+  vec3 violet  = vec3(0.65, 0.35, 1.00);
+  vec3 magenta = vec3(1.00, 0.35, 0.75);
+  vec3 amber   = vec3(1.00, 0.65, 0.30);
+  float f = fract(x) * 5.0;
+  vec3 h = mix(cyan, blue, clamp(f, 0.0, 1.0));
+  h = mix(h, violet,  clamp(f - 1.0, 0.0, 1.0));
+  h = mix(h, magenta, clamp(f - 2.0, 0.0, 1.0));
+  h = mix(h, amber,   clamp(f - 3.0, 0.0, 1.0));
+  return mix(h, cyan,  clamp(f - 4.0, 0.0, 1.0));
+}
+// a bright head with a soft tail, periodic in the angle
+float comet(float a, float head, float sharp) {
+  return exp((cos(a - head) - 1.0) * sharp);
+}
+vec4 aurora(float ang, float t) {
   float ts = t * uAuroraSpeed;
-  float ph = sin(ang * 3.0 + ts * 0.23)  * 0.50
-           + sin(ang * 5.0 - ts * 0.161 + 1.7) * 0.30
-           + sin(ang * 2.0 + ts * 0.097 + 4.1) * 0.28;
-
-  // pools: the field sharpened, so light gathers instead of ringing
-  float pool = pow(clamp(ph * 0.6 + 0.5, 0.0, 1.0), 2.6);
-
-  // hue from the same phase, one octave apart
-  float k = 0.5 + 0.5 * sin(ph * 2.2 + ts * 0.05);
-  vec3 teal   = vec3(0.20, 0.95, 0.90);
-  vec3 violet = vec3(0.55, 0.35, 1.00);
-  vec3 pink   = vec3(1.00, 0.45, 0.80);
-  vec3 h = mix(mix(teal, violet, smoothstep(0.0, 0.55, k)),
-               pink, smoothstep(0.55, 1.0, k));
-  return vec4(h, pool);
+  vec3 hue = aurHue(ang / 6.28318 - ts * 0.045);
+  float amp = 0.38
+            + 0.85 * comet(ang, ts * 0.55 + 1.0, 5.0)
+            + 0.65 * comet(ang, -ts * 0.38 + 3.5, 8.0);
+  return vec4(hue, amp);
 }
 
 void main() {
@@ -225,14 +230,14 @@ void main() {
     smoke = smoke * smoke * (3.0 - 2.0 * smoke);
     col = mix(col, col * 0.10, smoke * uSmoke);
 
-    // the glow clings to the inside of the outline and is gone before
-    // the middle. where a pool stands, it also bleeds a little deeper
-    float ga = atan(u.y, u.x);
-    vec4 gf = glowField(ga, uTime);
-    float reach = uAuroraRay * (0.7 + 0.5 * gf.a);
-    float glow = pow(smoothstep(1.0 - reach, 1.0, r), 1.6)
+    // the aurora hangs on the inside of the outline and runs out well
+    // before the middle. angle taken in world proportions, so the flow
+    // moves evenly around the long shape instead of bunching at the caps
+    float ga = atan(u.y * hs.y, u.x * hs.x);
+    vec4 gf = aurora(ga, uTime);
+    float glow = pow(smoothstep(1.0 - uAuroraRay, 1.0, r), 1.5)
                * gf.a * uAurora * uHover;
-    col += gf.rgb * glow * 0.62;
+    col += gf.rgb * glow * 0.55;
 
     // the only colour in here comes from the dispersion above
     float band = smoothstep(0.14, 0.02, depth) * smoothstep(0.0, 0.02, depth);
@@ -272,11 +277,15 @@ void main() {
   vec2 hsr = vec2(uR * uShapeW * (1.0 + uDeform.x),
                   uR * uShapeH * (1.0 + uDeform.y)) * uScale;
   vec2 ur = (q - c) / hsr;
-  vec4 gfr = glowField(atan(ur.y, ur.x), uTime);
+  vec4 gfr = aurora(atan(ur.y * hsr.y, ur.x * hsr.x), uTime);
   float aglow = uAurora * uHover * gfr.a;
-  vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), gfr.rgb, clamp(aglow * 1.1, 0.0, 1.0));
+  vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), gfr.rgb, clamp(aglow * 0.9, 0.0, 1.0));
   col += gfr.rgb * band * aglow * 0.55;
   col += gfr.rgb * wall * aglow * 0.17;
+  // and the light does not stop at the wall: a soft bloom breathes past
+  // the rim into the dark, strongest where a comet stands
+  float bloom = exp(-max(d, 0.0) * 30.0) * outside;
+  col += gfr.rgb * bloom * uAurora * uHover * gfr.a * 0.22;
 
   col += rimCol * band * lit * uLightPower * 0.35;
   col += rimCol * band * tir * uLightPower * 0.62;
@@ -324,7 +333,7 @@ const DEFAULTS = {
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.55, smokePos: 0.00,
   shadow: 0.14,
-  aurora: 0.75, auroraSpeed: 1.0, auroraRay: 0.34
+  aurora: 0.85, auroraSpeed: 1.0, auroraRay: 0.30
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
