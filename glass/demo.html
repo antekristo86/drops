@@ -474,7 +474,7 @@ function physics(dt) {
   const aspectJS = canvas.width / canvas.height;
   const rightA = 1 - (0.5 + hwA) > hhA * 3.2 / aspectJS;
   const exA = rightA ? 1 : 0, eyA = rightA ? 0 : -1;
-  const rowE = rightA ? (hhA * 7.7) / aspectJS : hhA * 7.7;
+  const rowE = rightA ? (hhA * 8.1) / aspectJS : hhA * 8.1;
   const shT = dropOn ? rowE / 2 : 0;
   const shk = 70, shd = 2 * Math.sqrt(shk) * 0.95;
   shV += (shk * (shT - sh) - shd * shV) * dt;
@@ -524,7 +524,7 @@ function physics(dt) {
 
     for (let i = 0; i < ND; i++) {
       const D = drops[i];
-      const off = RAD * (1.35 + i * 2.62) + RAD;
+      const off = RAD * (1.80 + i * 2.62) + RAD;
       const slotX = right ? lx + hw + (off - RAD) / aspect + RAD * 0.0 : lx;
       const slotY = right ? ly : ly - hh - (off - RAD);
 
