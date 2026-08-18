@@ -416,7 +416,10 @@ let dragging = false, grabX = 0, grabY = 0;
 function lensHalf() {
   const R = 0.13;
   const ar = canvas.width / canvas.height;
-  return { hw: R * P.shapeW * scale / ar, hh: R * P.shapeH * scale, ar };
+  // the deform is part of the true size: the hitbox follows the wobble
+  // and so do the droplet slots, which is what makes everything react
+  return { hw: R * P.shapeW * scale * (1 + dX) / ar,
+           hh: R * P.shapeH * scale * (1 + dY), ar };
 }
 function overLens(mx, my) {
   const { hw, hh, ar } = lensHalf();
@@ -427,9 +430,10 @@ addEventListener('pointermove', e => {
   const mx = e.clientX / innerWidth, my = 1 - e.clientY / innerHeight;
   if (dragging) { tx = mx - grabX; ty = my - grabY; return; }
   const inside = overLens(mx, my);
-  scaleT = inside ? 1.12 : 1;
-  // first contact gives the jelly a tiny shiver: it notices you
-  if (inside && !hovT) { dYv += 0.5; dXv -= 0.3; }
+  // first contact gives the jelly a kick, the rest-point change below
+  // does the growing. hover is the pressed state in reverse: same
+  // springs, same wobble, other direction
+  if (inside && !hovT) { dYv += 0.5; dXv += 0.4; }
   hovT = inside ? 1 : 0;
   canvas.style.cursor = inside ? 'grab' : 'crosshair';
 });
@@ -591,8 +595,10 @@ function physics(dt) {
   // while held, its rest point sits below zero: the button is pressed
   // in, stays pressed, and springs out of the same system on release
   const jk = 90, jd = 2 * Math.sqrt(90) * 0.5;
-  const tX = dragging ? -0.07 : 0;
-  const tY = dragging ? -0.13 : 0;
+  // pressed sinks below zero, hovered swells above it. one system,
+  // growth with a wobble instead of a clean scale
+  const tX = dragging ? -0.07 : hovT * 0.10;
+  const tY = dragging ? -0.13 : hovT * 0.12;
   dXv += (-jk * (dX - tX) - jd * dXv) * dt; dX += dXv * dt;
   dYv += (-jk * (dY - tY) - jd * dYv) * dt; dY += dYv * dt;
 }
