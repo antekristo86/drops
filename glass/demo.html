@@ -86,6 +86,7 @@ uniform float uShadow;
 // the aurora: how bright, how fast it drifts, how tall the rays stand
 uniform float uAurora, uAuroraSpeed, uAuroraRay;
 uniform float uHover;    // springed 0..1, the aurora breathes in on hover
+uniform float uDropHov[3];// each circle's own hover level
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uDeform;    // squash and stretch, from the physics
@@ -205,8 +206,10 @@ void main() {
     vec2 dir = length(u) > 1e-5 ? normalize(u) : vec2(0.0);
 
     // inside a droplet, that droplet is the lens. a soft handover in
-    // each neck, so the refraction never jumps
+    // each neck, so the refraction never jumps. the hover level rides
+    // along: every body glows only for itself
     vec2 ce = c;
+    float hovG = uHover;
     for (int i = 0; i < 3; i++) {
       if (uDropRs[i] < 1e-4) continue;
       vec2 dc = vec2(uDrops[i].x * aspect, uDrops[i].y);
@@ -218,6 +221,7 @@ void main() {
         dir = normalize(mix(dir, dirD, wD));
         hs = mix(hs, vec2(uDropRs[i]), wD);
         ce = mix(c, dc, wD);
+        hovG = mix(hovG, uDropHov[i], wD);
       }
     }
 
@@ -264,12 +268,14 @@ void main() {
     col = mix(col, col * 0.10, smoke * uSmoke);
 
     // the glow clings to the inside of the outline and is gone before
-    // the middle. where a pool stands, it also bleeds a little deeper
-    float ga = atan(u.y, u.x);
+    // the middle. angle and radius in the frame of the body this pixel
+    // belongs to, gated by that body's own hover
+    vec2 uL = (q - ce) / hs;
+    float ga = atan(uL.y, uL.x);
     vec4 gf = glowField(ga, uTime);
     float reach = uAuroraRay * (0.7 + 0.5 * gf.a);
     float glow = pow(smoothstep(1.0 - reach, 1.0, r), 1.6)
-               * gf.a * uAurora * uHover;
+               * gf.a * uAurora * hovG;
     col += gf.rgb * glow * 0.62;
 
     // the only colour in here comes from the dispersion above
@@ -305,13 +311,21 @@ void main() {
   float down  = clamp(-dot(nrm, L), 0.0, 1.0);
   float tir   = pow(down, 1.6);
 
-  // the rim carries the same light: whatever hue stands at this point
-  // of the outline tints the lit edge, exactly in step with the glow
+  // the rim carries the same light: whichever body owns this stretch
+  // of edge lends its frame and its own hover level
   vec2 hsr = vec2(uR * uShapeW * (1.0 + uDeform.x),
                   uR * uShapeH * (1.0 + uDeform.y)) * uScale;
   vec2 ur = (q - c) / hsr;
+  float rSel = pow(pow(abs(ur.x), 6.0) + pow(abs(ur.y), 6.0), 1.0 / 6.0);
+  float hovR = uHover;
+  for (int i = 0; i < 3; i++) {
+    if (uDropRs[i] < 1e-4) continue;
+    vec2 dc = vec2(uDrops[i].x * aspect, uDrops[i].y);
+    float rD = length(q - dc) / uDropRs[i];
+    if (rD < rSel) { rSel = rD; ur = (q - dc) / uDropRs[i]; hovR = uDropHov[i]; }
+  }
   vec4 gfr = glowField(atan(ur.y, ur.x), uTime);
-  float aglow = uAurora * uHover * gfr.a;
+  float aglow = uAurora * hovR * gfr.a;
   vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), gfr.rgb, clamp(aglow * 1.1, 0.0, 1.0));
   col += gfr.rgb * band * aglow * 0.55;
   col += gfr.rgb * wall * aglow * 0.17;
@@ -382,6 +396,7 @@ const uDrops = gl.getUniformLocation(prog, 'uDrops');
 const uDropRs = gl.getUniformLocation(prog, 'uDropRs');
 const uNeckU = gl.getUniformLocation(prog, 'uNeck');
 const uHover = gl.getUniformLocation(prog, 'uHover');
+const uDropHov = gl.getUniformLocation(prog, 'uDropHov');
 
 // ============================================================
 // physics. the glass is a thing you can throw. while dragging it
@@ -402,7 +417,8 @@ let downMx = 0, downMy = 0;
 const ND = 3;
 const drops = Array.from({ length: ND }, () => ({
   bx: 0.5, by: 0.5, bvx: 0, bvy: 0, rad: 0, radV: 0, live: false,
-  g: 0, gV: 0, hovT: 0     // its own jelly: swells on hover, sinks on press
+  g: 0, gV: 0, hovT: 0,    // its own jelly: swells on hover, sinks on press
+  hv: 0, hvV: 0            // its own glow level, breathes like the button's
 }));
 let pressIdx = -1;          // which circle is held down
 let dropOn = false;              // do they want to be out
@@ -636,6 +652,7 @@ function physics(dt) {
       const gT = pressIdx === i ? -0.10 : D.hovT * 0.11;
       D.gV += (-90 * (D.g - gT) - 2 * Math.sqrt(90) * 0.5 * D.gV) * dt;
       D.g += D.gV * dt;
+      D.hv += (D.hovT - D.hv) * Math.min(dt * 6, 1);
     }
     if (dropHome && !anyLive) dropHome = false;
     const neckT = 0.05 + 0.085 * maxZone * ((dropOn || dropHome) ? 1 : 0);
@@ -696,6 +713,7 @@ function frame(t) {
   hovV += (ht - hov) * 0.030 - hovV * 0.24;
   hov += hovV;
   gl.uniform1f(uHover, Math.max(0, hov));
+  gl.uniform1fv(uDropHov, drops.map(D => Math.max(0, D.hv)));
   gl.uniform1f(uScale, scale);
   for (const k in DEFAULTS) gl.uniform1f(U[k], P[k]);
   // the artwork drifts slowly, so its light-to-dark edge crosses the lens
