@@ -399,8 +399,10 @@ let downMx = 0, downMy = 0;
 // slides aside exactly half the width the row adds
 const ND = 3;
 const drops = Array.from({ length: ND }, () => ({
-  bx: 0.5, by: 0.5, bvx: 0, bvy: 0, rad: 0, radV: 0, live: false
+  bx: 0.5, by: 0.5, bvx: 0, bvy: 0, rad: 0, radV: 0, live: false,
+  g: 0, gV: 0, hovT: 0     // its own jelly: swells on hover, sinks on press
 }));
+let pressIdx = -1;          // which circle is held down
 let dropOn = false;              // do they want to be out
 let dropHome = false;            // heading back in
 let phaseT = 0;                  // when the last toggle happened
@@ -421,6 +423,16 @@ function lensHalf() {
   return { hw: R * P.shapeW * scale * (1 + dX) / ar,
            hh: R * P.shapeH * scale * (1 + dY), ar };
 }
+function dropEffR(D) { return D.rad * (1 + D.g); }
+function overDrop(mx, my) {
+  const ar = canvas.width / canvas.height;
+  for (let i = 0; i < ND; i++) {
+    const D = drops[i];
+    if (!D.live) continue;
+    if (Math.hypot((mx - D.bx) * ar, my - D.by) < dropEffR(D) + 0.015) return i;
+  }
+  return -1;
+}
 function overLens(mx, my) {
   const { hw, hh, ar } = lensHalf();
   return Math.abs(mx - lx) < hw + 0.02 / ar && Math.abs(my - ly) < hh + 0.02;
@@ -435,11 +447,24 @@ addEventListener('pointermove', e => {
   // springs, same wobble, other direction
   if (inside && !hovT) { dYv += 0.5; dXv += 0.4; }
   hovT = inside ? 1 : 0;
-  canvas.style.cursor = inside ? 'grab' : 'crosshair';
+  const di = overDrop(mx, my);
+  for (let i = 0; i < ND; i++) {
+    const D = drops[i];
+    if (i === di && !D.hovT) D.gV += 1.0;   // it notices you too
+    D.hovT = i === di ? 1 : 0;
+  }
+  canvas.style.cursor = inside ? 'grab' : di >= 0 ? 'pointer' : 'crosshair';
 });
 
 canvas.addEventListener('pointerdown', e => {
   const mx = e.clientX / innerWidth, my = 1 - e.clientY / innerHeight;
+  const di = overDrop(mx, my);
+  if (di >= 0) {
+    pressIdx = di;
+    drops[di].gV -= 1.3;              // the impact
+    canvas.setPointerCapture(e.pointerId);
+    return;
+  }
   if (!overLens(mx, my)) return;
   dragging = true;
   grabX = mx - lx;
@@ -454,6 +479,11 @@ canvas.addEventListener('pointerdown', e => {
   dXv -= 0.5;
 });
 addEventListener('pointerup', e => {
+  if (pressIdx >= 0) {
+    drops[pressIdx].gV += 1.6;        // release pop, it rings out
+    pressIdx = -1;
+    return;
+  }
   if (!dragging) return;
   dragging = false;
   canvas.style.cursor = 'grab';
@@ -481,7 +511,9 @@ function physics(dt) {
   const aspectJS = canvas.width / canvas.height;
   const rightA = 1 - (0.5 + hwA) > hhA * 3.2 / aspectJS;
   const exA = rightA ? 1 : 0, eyA = rightA ? 0 : -1;
-  const rowE = (hhA * ((1.80 + 5.24) * P.spacing + 1.0)) / (rightA ? aspectJS : 1);
+  let rowTot = hhA * (1.80 * P.spacing - 1) + (ND - 1) * hhA * (2.62 * P.spacing - 2);
+  for (const D of drops) rowTot += 2 * dropEffR(D);
+  const rowE = rowTot / (rightA ? aspectJS : 1);
   const shT = dropOn ? rowE / 2 : 0;
   const shk = 70, shd = 2 * Math.sqrt(shk) * 0.95;
   shV += (shk * (shT - sh) - shd * shV) * dt;
@@ -530,11 +562,21 @@ function physics(dt) {
     const tNow = performance.now();
     let anyLive = false, maxZone = 0;
 
+    // the row is laid out over the circles' true current sizes. when
+    // one swells, its neighbours' slots move over and their springs
+    // carry them there: the whole row wobbles into the new order
+    const gW = RAD * (1.80 * P.spacing - 1);
+    const gGap = RAD * (2.62 * P.spacing - 2);
+    let cumOff = gW;
+
     for (let i = 0; i < ND; i++) {
       const D = drops[i];
-      const off = RAD * (1.80 + i * 2.62) * P.spacing + RAD;
-      const slotX = right ? lx + hw + (off - RAD) / aspect + RAD * 0.0 : lx;
-      const slotY = right ? ly : ly - hh - (off - RAD);
+      const eR = dropEffR(D);
+      cumOff += eR;
+      const off = cumOff;
+      cumOff += eR + gGap;
+      const slotX = right ? lx + hw + off / aspect : lx;
+      const slotY = right ? ly : ly - hh - off;
 
       const wait = dropOn ? i * 140 : (ND - 1 - i) * 140;
       const active = tNow - phaseT > wait;
@@ -585,6 +627,11 @@ function physics(dt) {
       D.radV += (180 * (radT - D.rad) - 2 * Math.sqrt(180) * 0.6 * D.radV) * dt;
       D.rad += D.radV * dt;
       D.rad = Math.max(D.rad, 0);
+      // its jelly: hover swells above zero, holding sinks below, the
+      // same clock as the big button's
+      const gT = pressIdx === i ? -0.10 : D.hovT * 0.11;
+      D.gV += (-90 * (D.g - gT) - 2 * Math.sqrt(90) * 0.5 * D.gV) * dt;
+      D.g += D.gV * dt;
     }
     if (dropHome && !anyLive) dropHome = false;
     const neckT = 0.05 + 0.085 * maxZone * ((dropOn || dropHome) ? 1 : 0);
@@ -658,7 +705,7 @@ function frame(t) {
   const [ux, uy] = deformNow();
   gl.uniform2f(uDeform, ux, uy);
   gl.uniform2fv(uDrops, drops.flatMap(D => [D.bx, D.by]));
-  gl.uniform1fv(uDropRs, drops.map(D => D.rad));
+  gl.uniform1fv(uDropRs, drops.map(D => dropEffR(D)));
   gl.uniform1f(uNeckU, neck);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   requestAnimationFrame(frame);
