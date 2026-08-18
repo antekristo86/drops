@@ -399,8 +399,10 @@ let downMx = 0, downMy = 0;
 // slides aside exactly half the width the row adds
 const ND = 3;
 const drops = Array.from({ length: ND }, () => ({
-  bx: 0.5, by: 0.5, bvx: 0, bvy: 0, rad: 0, radV: 0, live: false
+  bx: 0.5, by: 0.5, bvx: 0, bvy: 0, rad: 0, radV: 0, live: false,
+  sc: 1, scV: 0, hovT: 0            // each circle is a button of its own
 }));
+let pressIdx = -1;                   // which circle is held down
 let dropOn = false;              // do they want to be out
 let dropHome = false;            // heading back in
 let phaseT = 0;                  // when the last toggle happened
@@ -418,6 +420,15 @@ function lensHalf() {
   const ar = canvas.width / canvas.height;
   return { hw: R * P.shapeW * scale / ar, hh: R * P.shapeH * scale, ar };
 }
+function overDrop(mx, my) {
+  const ar = canvas.width / canvas.height;
+  for (let i = 0; i < ND; i++) {
+    const D = drops[i];
+    if (!D.live) continue;
+    if (Math.hypot((mx - D.bx) * ar, my - D.by) < D.rad * D.sc + 0.015) return i;
+  }
+  return -1;
+}
 function overLens(mx, my) {
   const { hw, hh, ar } = lensHalf();
   return Math.abs(mx - lx) < hw + 0.02 / ar && Math.abs(my - ly) < hh + 0.02;
@@ -434,6 +445,15 @@ addEventListener('pointermove', e => {
 
 canvas.addEventListener('pointerdown', e => {
   const mx = e.clientX / innerWidth, my = 1 - e.clientY / innerHeight;
+  const di = overDrop(mx, my);
+  if (di >= 0) {
+    // pressing a circle: the dip is a kick into its own radius spring,
+    // held down while the finger stays
+    pressIdx = di;
+    drops[di].radV -= 0.22;
+    canvas.setPointerCapture(e.pointerId);
+    return;
+  }
   if (!overLens(mx, my)) return;
   dragging = true;
   grabX = mx - lx;
@@ -448,6 +468,12 @@ canvas.addEventListener('pointerdown', e => {
   dXv -= 0.5;
 });
 addEventListener('pointerup', e => {
+  if (pressIdx >= 0) {
+    // release: the opposite kick, it pops back and rings out
+    drops[pressIdx].radV += 0.30;
+    pressIdx = -1;
+    return;
+  }
   if (!dragging) return;
   dragging = false;
   canvas.style.cursor = 'grab';
@@ -579,6 +605,11 @@ function physics(dt) {
       D.radV += (180 * (radT - D.rad) - 2 * Math.sqrt(180) * 0.6 * D.radV) * dt;
       D.rad += D.radV * dt;
       D.rad = Math.max(D.rad, 0);
+      // its own hover spring, same feel as the big one. held down it
+      // sits a notch smaller
+      const scT = pressIdx === i ? 0.92 : D.hovT ? 1.12 : 1;
+      D.scV += (scT - D.sc) * 0.045 - D.scV * 0.26;
+      D.sc += D.scV;
     }
     if (dropHome && !anyLive) dropHome = false;
     const neckT = 0.05 + 0.085 * maxZone * ((dropOn || dropHome) ? 1 : 0);
@@ -650,7 +681,7 @@ function frame(t) {
   const [ux, uy] = deformNow();
   gl.uniform2f(uDeform, ux, uy);
   gl.uniform2fv(uDrops, drops.flatMap(D => [D.bx, D.by]));
-  gl.uniform1fv(uDropRs, drops.map(D => D.rad));
+  gl.uniform1fv(uDropRs, drops.map(D => D.rad * D.sc));
   gl.uniform1f(uNeckU, neck);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   requestAnimationFrame(frame);
