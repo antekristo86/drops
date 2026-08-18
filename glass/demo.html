@@ -89,6 +89,7 @@ uniform float uHover;    // springed 0..1, the aurora breathes in on hover
 uniform float uDropHov[3];// each circle's own hover level
 uniform float uBounce;   // how much light the bodies throw on each other
 uniform float uPool;     // the caustic pool on the ground below
+uniform float uHalo;     // how far the aurora shines past the rim
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uDeform;    // squash and stretch, from the physics
@@ -433,7 +434,7 @@ void main() {
     vec4 gs = glowField(atan(urB.y, urB.x) + srcPh, uTime);
     float dOut = max(dB, 0.0);
     float bl = exp(-dOut * 34.0) * 0.30 + exp(-dOut * 9.0) * 0.10;
-    col += gs.rgb * gs.a * bl * outside * uAurora * srcHov;
+    col += gs.rgb * gs.a * bl * outside * uAurora * srcHov * uHalo;
   }
 
   col += rimCol * band * lit * uLightPower * 0.35;
@@ -492,7 +493,7 @@ const DEFAULTS = {
   dispersion: 0.06, frost: 0.0, splay: 7.3,
   shapeW: 1.8, shapeH: 0.58, smoke: 1.0, smokePos: -0.28,
   shadow: 0.6, spacing: 1.0,
-  aurora: 0.14, auroraSpeed: 0.62, auroraRay: 0.74, bounce: 1.6, pool: 0.0
+  aurora: 0.14, auroraSpeed: 0.62, auroraRay: 0.74, bounce: 1.6, pool: 0.0, halo: 1.0
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
@@ -851,7 +852,7 @@ const RANGES = {
   smokePos: [-0.8, 0.8, 0.02],
   shadow: [0, 0.6, 0.01], spacing: [0.7, 2, 0.01],
   aurora: [0, 2, 0.02], auroraSpeed: [0, 3, 0.02], auroraRay: [0.15, 1.5, 0.01],
-  bounce: [0, 6, 0.05], pool: [0, 3, 0.02]
+  bounce: [0, 6, 0.05], pool: [0, 3, 0.02], halo: [0, 4, 0.02]
 };
 const panel = document.getElementById('tune');
 panel.innerHTML = Object.keys(RANGES).map(k => {
