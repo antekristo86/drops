@@ -402,8 +402,12 @@ void main() {
     }
     if (srcHov * uAurora * uPool < 0.004) continue;
     vec2 toP = q - srcP;
-    if (toP.y > -srcR * 0.4) continue;
     float travel = -toP.y - srcR * 0.4;
+    if (travel < -srcR * 0.9) continue;
+    // the pool fades in over most of a radius instead of starting on a
+    // hard line. the old outside mask used to hide that edge; through
+    // the glass it was suddenly naked
+    float rise = smoothstep(-srcR * 0.9, srcR * 0.7, travel);
     float spreadW = (j == 0 ? hsr.x * 0.8 : srcR) * (0.8 + travel * 1.5 / srcR * 0.5);
     float lat = exp(-pow(toP.x / spreadW, 2.0));
     float reach = exp(-pow(travel / (srcR * 1.6), 2.0));
@@ -412,7 +416,7 @@ void main() {
     // seen through the material and dimmed by it, instead of being cut
     // off at the silhouette
     float through = outside + (1.0 - outside) * 0.45;
-    col += gs.rgb * gs.a * lat * reach * through * uAurora * srcHov * uPool * 0.55;
+    col += gs.rgb * gs.a * lat * reach * rise * through * uAurora * srcHov * uPool * 0.55;
   }
 
   // the light does not stop at the wall: where a pool stands, a soft
