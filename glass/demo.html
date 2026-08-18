@@ -337,17 +337,23 @@ addEventListener('pointerup', () => {
 addEventListener('pointerleave', () => { scaleT = 1; });
 
 function physics(dt) {
+  // the button has a home. pulling it away is an argument with a spring
+  // that stiffens the further you get, and it never fully agrees
+  const hx = lx - 0.5, hy = ly - 0.5;
+  const pull = Math.hypot(hx, hy);
+  const ka = 150 + 2400 * pull * pull;
   if (dragging) {
-    // a stiff, critically damped spring to the hand. the lens trails
-    // the cursor by a breath, which is what weight feels like, and the
-    // spring velocity is the throw when you let go
     const k = 420, d = 2 * Math.sqrt(k);
     vx += (k * (tx - lx) - d * vx) * dt;
     vy += (k * (ty - ly) - d * vy) * dt;
+    vx += -ka * hx * dt;
+    vy += -ka * hy * dt;
   } else {
-    // air, not sandpaper. it glides
-    const drag = Math.exp(-dt * 0.9);
-    vx *= drag; vy *= drag;
+    // released: the same spring takes it home, underdamped on purpose.
+    // it overshoots, wobbles, settles
+    const dmp = 2 * Math.sqrt(ka) * 0.32;
+    vx += (-ka * hx - dmp * vx) * dt;
+    vy += (-ka * hy - dmp * vy) * dt;
   }
   lx += vx * dt;
   ly += vy * dt;
@@ -371,8 +377,10 @@ function physics(dt) {
 // stretch is not stored, it is read off the velocity: fast along x
 // means longer and flatter, and the sum stays near volume neutral
 function deformNow() {
-  const sx = Math.min(Math.abs(vx) * 0.22, 0.20);
-  const sy = Math.min(Math.abs(vy) * 0.22, 0.20);
+  // held off centre it stretches like taffy along the pull; moving fast
+  // it stretches along the motion. both read straight off the state
+  const sx = Math.min(Math.abs(vx) * 0.22, 0.20) + Math.min(Math.abs(lx - 0.5) * 0.9, 0.22);
+  const sy = Math.min(Math.abs(vy) * 0.22, 0.20) + Math.min(Math.abs(ly - 0.5) * 0.9, 0.22);
   const ux = Math.max(-0.30, Math.min(0.35, dX + sx - sy * 0.6));
   const uy = Math.max(-0.30, Math.min(0.35, dY + sy - sx * 0.6));
   return [ux, uy];
