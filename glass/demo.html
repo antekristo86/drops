@@ -85,11 +85,12 @@ uniform float uShapeW, uShapeH, uSmoke, uSmokePos;
 uniform float uShadow;
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
-uniform vec2 uVel;       // lens velocity, squashes the bubble
+uniform vec2 uDeform;    // squash and stretch, from the physics
 
 // a rectangle with rounded corners. exact sdf
 float lensField(vec2 q, vec2 c, float r) {
-  vec2 halfSize = vec2(r * uShapeW, r * uShapeH) * uScale;
+  vec2 halfSize = vec2(r * uShapeW * (1.0 + uDeform.x),
+                       r * uShapeH * (1.0 + uDeform.y)) * uScale;
   float rad = halfSize.y;   // always half the height: clean semicircular ends
   vec2 d2 = abs(q - c) - (halfSize - rad);
   return length(max(d2, vec2(0.0))) + min(max(d2.x, d2.y), 0.0) - rad;
@@ -100,7 +101,8 @@ float lensField(vec2 q, vec2 c, float r) {
 // the silhouette, but its gradient flips along the medial axis of any
 // straight edge, and that seam prints straight through the body
 float domeH(vec2 p, vec2 c, float r) {
-  vec2 hs = vec2(r * uShapeW, r * uShapeH) * uScale;
+  vec2 hs = vec2(r * uShapeW * (1.0 + uDeform.x),
+                 r * uShapeH * (1.0 + uDeform.y)) * uScale;
   vec2 u = (p - c) / hs;
   float rr = pow(pow(abs(u.x), 4.0) + pow(abs(u.y), 4.0), 0.25);
   // 1 - r^n. flat through the middle, steepest right at the rim, and
@@ -148,7 +150,8 @@ void main() {
     // hardest at the rim, plus the magnification a thick body gives.
     // all of it in body space, so it stays smooth everywhere. distance
     // field gradients and height normals both tear on straight edges
-    vec2 hs = vec2(uR * uShapeW, uR * uShapeH) * uScale;
+    vec2 hs = vec2(uR * uShapeW * (1.0 + uDeform.x),
+                   uR * uShapeH * (1.0 + uDeform.y)) * uScale;
     vec2 u = (q - c) / hs;
     float r = min(pow(pow(abs(u.x), 6.0) + pow(abs(u.y), 6.0), 1.0 / 6.0), 1.0);
     vec2 dir = length(u) > 1e-5 ? normalize(u) : vec2(0.0);
@@ -185,7 +188,7 @@ void main() {
     col *= mix(1.0, 0.9, bend);
 
     // the body is smoked at the top and clears toward the bottom.
-    float hh = uR * uShapeH * uScale;
+    float hh = uR * uShapeH * (1.0 + uDeform.y) * uScale;
     float up = (q.y - c.y) / hh;                 // -1 bottom, +1 top
     // wide and eased twice. a narrow ramp reads as an overlay, a long
     // one reads as tinted material. never fully black, the body keeps depth
@@ -281,31 +284,36 @@ const U = {};
 for (const k in DEFAULTS) U[k] = gl.getUniformLocation(prog, 'u' + k[0].toUpperCase() + k.slice(1));
 const uLens = gl.getUniformLocation(prog, 'uLens');
 const uRU = gl.getUniformLocation(prog, 'uR');
-const uVel = gl.getUniformLocation(prog, 'uVel');
+const uDeform = gl.getUniformLocation(prog, 'uDeform');
 
+// ============================================================
+// physics. the glass is a thing you can throw. while dragging it
+// hangs on a stiff spring, so it has weight and its own velocity.
+// released, it flies with a little air drag and bounces off the
+// window edges. every impact squashes the body, every fast move
+// stretches it along the motion, and a jelly spring rings it back
+// ============================================================
 let lx = 0.5, ly = 0.5, vx = 0, vy = 0;
+let tx = 0.5, ty = 0.5;          // where the hand wants it
+let dX = 0, dXv = 0;             // squash springs, one per axis
+let dY = 0, dYv = 0;
 
-// hover grows the body, drag moves it. hit test uses the live shape,
-// so it stays correct when the dials change
 let scale = 1, scaleT = 1, scaleV = 0;
 let dragging = false, grabX = 0, grabY = 0;
 
-function overLens(mx, my) {
+function lensHalf() {
   const R = 0.13;
-  const hw = R * P.shapeW * scale, hh = R * P.shapeH * scale;
   const ar = canvas.width / canvas.height;
-  return Math.abs((mx - lx) * ar) < hw + 0.02 && Math.abs(my - ly) < hh + 0.02;
+  return { hw: R * P.shapeW * scale / ar, hh: R * P.shapeH * scale, ar };
+}
+function overLens(mx, my) {
+  const { hw, hh, ar } = lensHalf();
+  return Math.abs(mx - lx) < hw + 0.02 / ar && Math.abs(my - ly) < hh + 0.02;
 }
 
 addEventListener('pointermove', e => {
   const mx = e.clientX / innerWidth, my = 1 - e.clientY / innerHeight;
-  if (dragging) {
-    lx = mx - grabX;
-    ly = my - grabY;
-    lx = Math.max(0.02, Math.min(0.98, lx));
-    ly = Math.max(0.02, Math.min(0.98, ly));
-    return;
-  }
+  if (dragging) { tx = mx - grabX; ty = my - grabY; return; }
   const inside = overLens(mx, my);
   scaleT = inside ? 1.12 : 1;
   canvas.style.cursor = inside ? 'grab' : 'crosshair';
@@ -317,6 +325,7 @@ canvas.addEventListener('pointerdown', e => {
   dragging = true;
   grabX = mx - lx;
   grabY = my - ly;
+  tx = lx; ty = ly;
   canvas.setPointerCapture(e.pointerId);
   canvas.style.cursor = 'grabbing';
 });
@@ -326,6 +335,48 @@ addEventListener('pointerup', () => {
   canvas.style.cursor = 'grab';
 });
 addEventListener('pointerleave', () => { scaleT = 1; });
+
+function physics(dt) {
+  if (dragging) {
+    // a stiff, critically damped spring to the hand. the lens trails
+    // the cursor by a breath, which is what weight feels like, and the
+    // spring velocity is the throw when you let go
+    const k = 420, d = 2 * Math.sqrt(k);
+    vx += (k * (tx - lx) - d * vx) * dt;
+    vy += (k * (ty - ly) - d * vy) * dt;
+  } else {
+    // air, not sandpaper. it glides
+    const drag = Math.exp(-dt * 0.9);
+    vx *= drag; vy *= drag;
+  }
+  lx += vx * dt;
+  ly += vy * dt;
+
+  // the walls. an impact keeps most of the speed and dumps the rest
+  // into the body as squash
+  const { hw, hh } = lensHalf();
+  const rest = 0.58;
+  const kick = 0.55;
+  if (lx < hw)     { lx = hw;     if (vx < 0) { dXv -= Math.min(-vx * kick, 3); dYv += Math.min(-vx * kick * 0.7, 2); vx = -vx * rest; } }
+  if (lx > 1 - hw) { lx = 1 - hw; if (vx > 0) { dXv -= Math.min(vx * kick, 3);  dYv += Math.min(vx * kick * 0.7, 2);  vx = -vx * rest; } }
+  if (ly < hh)     { ly = hh;     if (vy < 0) { dYv -= Math.min(-vy * kick, 3); dXv += Math.min(-vy * kick * 0.7, 2); vy = -vy * rest; } }
+  if (ly > 1 - hh) { ly = 1 - hh; if (vy > 0) { dYv -= Math.min(vy * kick, 3);  dXv += Math.min(vy * kick * 0.7, 2);  vy = -vy * rest; } }
+
+  // the jelly. underdamped on purpose, it should ring a few times
+  const jk = 90, jd = 2 * Math.sqrt(90) * 0.5;
+  dXv += (-jk * dX - jd * dXv) * dt; dX += dXv * dt;
+  dYv += (-jk * dY - jd * dYv) * dt; dY += dYv * dt;
+}
+
+// stretch is not stored, it is read off the velocity: fast along x
+// means longer and flatter, and the sum stays near volume neutral
+function deformNow() {
+  const sx = Math.min(Math.abs(vx) * 0.22, 0.20);
+  const sy = Math.min(Math.abs(vy) * 0.22, 0.20);
+  const ux = Math.max(-0.30, Math.min(0.35, dX + sx - sy * 0.6));
+  const uy = Math.max(-0.30, Math.min(0.35, dY + sy - sx * 0.6));
+  return [ux, uy];
+}
 
 function resize() {
   dpr = Math.min(devicePixelRatio, 2);
@@ -344,7 +395,9 @@ resize();
 let last = performance.now();
 function frame(t) {
   const now = performance.now();
+  const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
+  physics(dt);
 
   scaleV += (scaleT - scale) * 0.045 - scaleV * 0.26;
   scale += scaleV;
@@ -358,7 +411,8 @@ function frame(t) {
   gl.uniform1f(uTime, t * 0.001);
   gl.uniform2f(uLens, lx, ly);
   gl.uniform1f(uRU, 0.13);
-  gl.uniform2f(uVel, vx, vy);
+  const [ux, uy] = deformNow();
+  gl.uniform2f(uDeform, ux, uy);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   requestAnimationFrame(frame);
 }
