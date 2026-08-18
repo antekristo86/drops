@@ -130,38 +130,16 @@ vec3 spectral(float k) {
   return   mix(dq,   blue,   smoothstep(0.80, 1.00, k));
 }
 
-// aurora, the real mechanism: curtains, not bands. a curtain is a sheet
-// of vertical rays. its lower border is sharp, the rays fade upward, and
-// the colour is altitude chemistry: green low, violet high. the curtains
-// drift and breathe, they do not scroll
-vec3 auroraField(vec2 u, float t) {
-  float amp = uAurora * uHover;
-  if (amp < 0.001) return vec3(0.0);
-  vec3 acc = vec3(0.0);
-  for (int i = 0; i < 3; i++) {
-    float fi = float(i);
-    // where this curtain stands right now, and how wide it is
-    float cx = 0.62 * sin(t * uAuroraSpeed * (0.21 + 0.06 * fi) + fi * 2.4);
-    float wd = 0.34 + 0.10 * sin(t * 0.17 + fi * 1.9);
-    float body = exp(-pow((u.x - cx) / wd, 2.0));
-
-    // vertical rays: fine columns inside the curtain, each flickering
-    // slightly. this is what makes it aurora and not fog
-    float ray = 0.72 + 0.28 * sin(u.x * 46.0 + fi * 7.0
-                                  + 1.3 * sin(u.x * 9.0 - t * uAuroraSpeed * 0.8));
-
-    // the lower border is sharp, the top runs out. the border itself
-    // waves slowly like the bottom of a curtain
-    float base = -0.30 + 0.14 * sin(u.x * 2.6 - t * uAuroraSpeed * 0.5 + fi * 1.1);
-    float h = (u.y - base) / uAuroraRay;
-    float vert = smoothstep(-0.06, 0.10, h) * exp(-max(h, 0.0) * 1.9);
-
-    // altitude chemistry: oxygen green low, nitrogen violet high
-    vec3 hue = mix(vec3(0.20, 1.00, 0.55), vec3(0.55, 0.30, 1.00),
-                   smoothstep(0.15, 0.95, h));
-    acc += hue * body * ray * vert;
-  }
-  return acc * amp * 0.55;
+// the hover glow: no simulation, just light. an iridescent hue drifts
+// slowly around the outline, lives on the edges and dies toward the
+// middle. teal, violet, pink, never all at once in one place
+vec3 glowHue(float ang, float t) {
+  float a = ang + t * uAuroraSpeed * 0.30;
+  vec3 teal   = vec3(0.20, 0.95, 0.90);
+  vec3 violet = vec3(0.55, 0.35, 1.00);
+  vec3 pink   = vec3(1.00, 0.45, 0.80);
+  vec3 h = mix(teal, violet, 0.5 + 0.5 * sin(a * 2.0));
+  return mix(h, pink, 0.5 + 0.5 * sin(a + 2.1));
 }
 
 void main() {
@@ -234,10 +212,13 @@ void main() {
     smoke = smoke * smoke * (3.0 - 2.0 * smoke);
     col = mix(col, col * 0.10, smoke * uSmoke);
 
-    // the aurora sits inside the body, behind the front surface, so the
-    // same bend that warps the background carries it
-    vec2 apos = u - dir * push * 0.9;
-    col += auroraField(apos, uTime);
+    // the glow clings to the inside of the outline and is gone before
+    // the middle. it breathes a little, it never blinks
+    float ga = atan(u.y, u.x);
+    float glow = pow(smoothstep(1.0 - uAuroraRay, 1.0, r), 1.6)
+               * (0.85 + 0.15 * sin(uTime * 0.8 + ga * 2.0))
+               * uAurora * uHover;
+    col += glowHue(ga, uTime) * glow * 0.50;
 
     // the only colour in here comes from the dispersion above
     float band = smoothstep(0.14, 0.02, depth) * smoothstep(0.0, 0.02, depth);
@@ -272,19 +253,16 @@ void main() {
   float down  = clamp(-dot(nrm, L), 0.0, 1.0);
   float tir   = pow(down, 1.6);
 
-  // the wall carries the colour of whatever shines on it from inside.
-  // sample the aurora just inside the rim: no light there, no tint
+  // the rim carries the same light: whatever hue stands at this point
+  // of the outline tints the lit edge, exactly in step with the glow
   vec2 hsr = vec2(uR * uShapeW * (1.0 + uDeform.x),
                   uR * uShapeH * (1.0 + uDeform.y)) * uScale;
   vec2 ur = (q - c) / hsr;
-  vec3 asamp = auroraField(ur * 0.86, uTime)
-             + auroraField(ur * 0.70, uTime);
-  float alum = max(max(asamp.r, asamp.g), asamp.b);
-  vec3 acol = alum > 1e-4 ? asamp / alum : vec3(1.0);
-  float aglow = clamp(alum * 1.4, 0.0, 1.0);
-  vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), acol, aglow * 0.85);
-  col += acol * band * aglow * 0.55;
-  col += acol * wall * aglow * 0.16;
+  vec3 hueR = glowHue(atan(ur.y, ur.x), uTime);
+  float aglow = uAurora * uHover;
+  vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), hueR, clamp(aglow * 0.8, 0.0, 1.0));
+  col += hueR * band * aglow * 0.45;
+  col += hueR * wall * aglow * 0.14;
 
   col += rimCol * band * lit * uLightPower * 0.35;
   col += rimCol * band * tir * uLightPower * 0.62;
@@ -332,7 +310,7 @@ const DEFAULTS = {
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.55, smokePos: 0.00,
   shadow: 0.14,
-  aurora: 1.30, auroraSpeed: 1.0, auroraRay: 0.72
+  aurora: 1.00, auroraSpeed: 1.0, auroraRay: 0.50
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
