@@ -233,6 +233,7 @@ void main() {
     vec2 ce = c;
     float hovG = uHover;
     float bodyPh = 0.0;      // every body shimmers on its own phase
+    float dropW = 0.0;       // 0 button, 1 inside a circle
     for (int i = 0; i < 3; i++) {
       if (uDropRs[i] < 1e-4) continue;
       vec2 dc = vec2(uDrops[i].x * aspect, uDrops[i].y);
@@ -246,6 +247,7 @@ void main() {
         ce = mix(c, dc, wD);
         hovG = mix(hovG, uDropHov[i], wD);
         bodyPh = mix(bodyPh, (float(i) + 1.0) * 2.13, wD);
+        dropW = mix(dropW, 1.0, wD);
       }
     }
 
@@ -294,10 +296,14 @@ void main() {
     // the glow clings to the inside of the outline and is gone before
     // the middle. angle and radius in the frame of the body this pixel
     // belongs to, gated by that body's own hover
+    // on the small circles the pools are angularly compressed and the
+    // reach damped, so their rings stay as filigree as the button's
+    // stretched edges instead of turning into fat arcs
     vec2 uL = (q - ce) / hs;
-    float ga = atan(uL.y, uL.x);
+    float ga = atan(uL.y, uL.x) * mix(1.0, 2.3, dropW);
     vec4 gf = glowField(ga + bodyPh, uTime);
-    float reach = uAuroraRay * (0.55 + 0.45 * gf.a) * reachMod(ga + bodyPh, uTime);
+    float reach = uAuroraRay * (0.55 + 0.45 * gf.a) * reachMod(ga + bodyPh, uTime)
+                * mix(1.0, 0.58, dropW);
     float glow = pow(smoothstep(1.0 - reach, 1.0, r), 1.6)
                * gf.a * uAurora * hovG;
     col += gf.rgb * glow * 0.62;
@@ -343,16 +349,17 @@ void main() {
   float rSel = pow(pow(abs(ur.x), 6.0) + pow(abs(ur.y), 6.0), 1.0 / 6.0);
   float hovR = uHover;
   float selPh = 0.0;
+  float selSc = 1.0;
   for (int i = 0; i < 3; i++) {
     if (uDropRs[i] < 1e-4) continue;
     vec2 dc = vec2(uDrops[i].x * aspect, uDrops[i].y);
     float rD = length(q - dc) / uDropRs[i];
     if (rD < rSel) {
       rSel = rD; ur = (q - dc) / uDropRs[i];
-      hovR = uDropHov[i]; selPh = (float(i) + 1.0) * 2.13;
+      hovR = uDropHov[i]; selPh = (float(i) + 1.0) * 2.13; selSc = 2.3;
     }
   }
-  vec4 gfr = glowField(atan(ur.y, ur.x) + selPh, uTime);
+  vec4 gfr = glowField(atan(ur.y, ur.x) * selSc + selPh, uTime);
   float aglow = uAurora * hovR * gfr.a;
   vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), gfr.rgb, clamp(aglow * 1.1, 0.0, 1.0));
   col += gfr.rgb * band * aglow * 0.55;
@@ -380,7 +387,7 @@ void main() {
     vec2 Ldir = toSrc / ds;
     float facing2 = clamp(dot(nrm.xy, Ldir), 0.0, 1.0);
     float fall = exp(-max(ds - srcR, 0.0) * 6.0);
-    vec4 gs = glowField(atan(-Ldir.y, -Ldir.x) + srcPh, uTime);
+    vec4 gs = glowField(atan(-Ldir.y, -Ldir.x) * (j == 0 ? 1.0 : 2.3) + srcPh, uTime);
     vec3 lc = gs.rgb * gs.a * srcHov * uAurora * uBounce * facing2 * fall;
     col += lc * (band * 0.85 + wall * 0.25);
   }
@@ -411,7 +418,7 @@ void main() {
     float spreadW = (j == 0 ? hsr.x * 0.8 : srcR) * (0.8 + travel * 1.5 / srcR * 0.5);
     float lat = exp(-pow(toP.x / spreadW, 2.0));
     float reach = exp(-pow(travel / (srcR * 1.6), 2.0));
-    vec4 gs = glowField(atan(toP.y, toP.x) + srcPh, uTime);
+    vec4 gs = glowField(atan(toP.y, toP.x) * (j == 0 ? 1.0 : 2.3) + srcPh, uTime);
     // the glass is transparent: the pool continues behind the body,
     // seen through the material and dimmed by it, instead of being cut
     // off at the silhouette
@@ -439,7 +446,7 @@ void main() {
     }
     if (srcHov * uAurora < 0.004) continue;
     vec2 urB = (q - srcP) / srcR;
-    vec4 gs = glowField(atan(urB.y, urB.x) + srcPh, uTime);
+    vec4 gs = glowField(atan(urB.y, urB.x) * (j == 0 ? 1.0 : 2.3) + srcPh, uTime);
     float dOut = max(dB, 0.0);
     float bl = exp(-dOut * 34.0) * 0.30 + exp(-dOut * 9.0) * 0.10;
     col += gs.rgb * gs.a * bl * outside * uAurora * srcHov * uHalo;
