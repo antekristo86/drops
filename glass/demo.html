@@ -379,21 +379,19 @@ canvas.addEventListener('pointerdown', e => {
   tx = lx; ty = ly;
   canvas.setPointerCapture(e.pointerId);
   canvas.style.cursor = 'grabbing';
-  // pressing squeezes the glass: flatter, wider. one kick into the
-  // jelly springs and nothing else, so it is one motion on one clock.
-  // the scale spring stays out of it, it ticks slower and reads as a
-  // second, late movement
-  dYv -= 2.2;
-  dXv += 1.3;
+  // pressing: the held rest point does the sinking; the kick on top
+  // gives the impact. one system, one clock
+  dYv -= 1.1;
+  dXv -= 0.5;
 });
 addEventListener('pointerup', e => {
   if (!dragging) return;
   dragging = false;
   canvas.style.cursor = 'grab';
-  // release: the opposite kick, same springs, same clock. it overshoots
-  // and rings out on its own
-  dYv += 2.6;
-  dXv -= 1.6;
+  // release: the rest point jumps back to zero and the kick on top
+  // makes it pop. it overshoots and rings out on its own
+  dYv += 1.5;
+  dXv += 0.7;
   const mx = e.clientX / innerWidth, my = 1 - e.clientY / innerHeight;
   scaleT = overLens(mx, my) ? 1.12 : 1;
 });
@@ -431,10 +429,14 @@ function physics(dt) {
   if (ly < hh)     { ly = hh;     if (vy < 0) { dYv -= Math.min(-vy * kick, 3); dXv += Math.min(-vy * kick * 0.7, 2); vy = -vy * rest; } }
   if (ly > 1 - hh) { ly = 1 - hh; if (vy > 0) { dYv -= Math.min(vy * kick, 3);  dXv += Math.min(vy * kick * 0.7, 2);  vy = -vy * rest; } }
 
-  // the jelly. underdamped on purpose, it should ring a few times
+  // the jelly. underdamped on purpose, it should ring a few times.
+  // while held, its rest point sits below zero: the button is pressed
+  // in, stays pressed, and springs out of the same system on release
   const jk = 90, jd = 2 * Math.sqrt(90) * 0.5;
-  dXv += (-jk * dX - jd * dXv) * dt; dX += dXv * dt;
-  dYv += (-jk * dY - jd * dYv) * dt; dY += dYv * dt;
+  const tX = dragging ? -0.07 : 0;
+  const tY = dragging ? -0.13 : 0;
+  dXv += (-jk * (dX - tX) - jd * dXv) * dt; dX += dXv * dt;
+  dYv += (-jk * (dY - tY) - jd * dYv) * dt; dY += dYv * dt;
 }
 
 // stretch is not stored, it is read off the velocity: fast along x
