@@ -349,6 +349,9 @@ let dY = 0, dYv = 0;
 let scale = 1, scaleT = 1, scaleV = 0;
 // the aurora breathes in on hover instead of switching on
 let hov = 0, hovT = 0, hovV = 0;
+// and the material wakes: touching counts, so this one stays up while
+// dragging even though the glow does not
+let wk = 0, wkV = 0;
 let dragging = false, grabX = 0, grabY = 0;
 
 function lensHalf() {
@@ -465,8 +468,19 @@ function frame(t) {
   hovV += (ht - hov) * 0.030 - hovV * 0.24;
   hov += hovV;
   gl.uniform1f(uHover, Math.max(0, hov));
+  const wt = (dragging || hovT) ? 1 : 0;
+  wkV += (wt - wk) * 0.030 - wkV * 0.24;
+  wk += wkV;
   gl.uniform1f(uScale, scale);
   for (const k in DEFAULTS) gl.uniform1f(U[k], P[k]);
+  // the glass wakes. idle it sits slightly frosted and shallow; under
+  // attention it clears, deepens, and the spectral edges fan open. the
+  // dials are the resting values, the wake pushes a little past them
+  const w = Math.max(0, Math.min(1.2, wk));
+  gl.uniform1f(U.frost,      P.frost + 0.09 * (1 - w));
+  gl.uniform1f(U.refraction, P.refraction * (0.78 + 0.32 * w));
+  gl.uniform1f(U.depth,      P.depth * (0.82 + 0.24 * w));
+  gl.uniform1f(U.dispersion, P.dispersion * (0.50 + 0.85 * w));
   // the artwork drifts slowly, so its light-to-dark edge crosses the lens
   const T = t * 0.001;
   gl.uniform2f(uPan, 0.0, 0.0);
