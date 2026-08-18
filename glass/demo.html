@@ -524,7 +524,12 @@ function physics(dt) {
         dXv += 0.9; dYv -= 0.5;
       }
     }
-    const radT = (dropOn || dropHome) ? RAD : 0;
+    // the radius rides on position, not on time: small while deep in
+    // the body, so no lump travels the silhouette, swelling to full as
+    // it crosses the wall. liquid gathers at the exit
+    const along = right ? Math.abs(bx - lx) / hw : Math.abs(by - ly) / hh;
+    const swell = Math.min(Math.max((along - 0.35) / 0.80, 0), 1);
+    const radT = (dropOn || dropHome) ? RAD * (0.32 + 0.68 * swell) : 0;
     radV += (180 * (radT - rad) - 2 * Math.sqrt(180) * 0.6 * radV) * dt;
     rad += radV * dt;
     rad = Math.max(rad, 0);
