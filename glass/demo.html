@@ -303,11 +303,18 @@ void main() {
     // on the small circles the pools are angularly compressed and the
     // reach damped, so their rings stay as filigree as the button's
     // stretched edges instead of turning into fat arcs
+    // the circles run the field at double angular frequency, but only
+    // integer multiples keep it periodic around the outline. and the two
+    // frequencies are blended as results, never as angles: a blended
+    // angle scale is aperiodic and tears at the atan seam, which is
+    // exactly the quarter-disc artefact
     vec2 uL = (q - ce) / hs;
-    float ga = atan(uL.y, uL.x) * mix(1.0, 2.3, dropW);
-    vec4 gf = glowField(ga + bodyPh, uTime);
-    float reach = uAuroraRay * (0.55 + 0.45 * gf.a) * reachMod(ga + bodyPh, uTime)
-                * mix(1.0, 0.58, dropW);
+    float ga = atan(uL.y, uL.x);
+    vec4 gfB = glowField(ga, uTime);
+    vec4 gfD = glowField(ga * 2.0 + bodyPh, uTime);
+    vec4 gf = mix(gfB, gfD, dropW);
+    float rm = mix(reachMod(ga, uTime), reachMod(ga * 2.0 + bodyPh, uTime), dropW);
+    float reach = uAuroraRay * (0.55 + 0.45 * gf.a) * rm * mix(1.0, 0.58, dropW);
     float glow = pow(smoothstep(1.0 - reach, 1.0, r), 1.6)
                * gf.a * uAurora * hovG;
     col += gf.rgb * glow * 0.62;
@@ -360,7 +367,7 @@ void main() {
     float rD = length(q - dc) / uDropRs[i];
     if (rD < rSel) {
       rSel = rD; ur = (q - dc) / uDropRs[i];
-      hovR = uDropHov[i]; selPh = (float(i) + 1.0) * 2.13; selSc = 2.3;
+      hovR = uDropHov[i]; selPh = (float(i) + 1.0) * 2.13; selSc = 2.0;
     }
   }
   vec4 gfr = glowField(atan(ur.y, ur.x) * selSc + selPh, uTime);
@@ -391,7 +398,7 @@ void main() {
     vec2 Ldir = toSrc / ds;
     float facing2 = clamp(dot(nrm.xy, Ldir), 0.0, 1.0);
     float fall = exp(-max(ds - srcR, 0.0) * 6.0);
-    vec4 gs = glowField(atan(-Ldir.y, -Ldir.x) * (j == 0 ? 1.0 : 2.3) + srcPh, uTime);
+    vec4 gs = glowField(atan(-Ldir.y, -Ldir.x) * (j == 0 ? 1.0 : 2.0) + srcPh, uTime);
     vec3 lc = gs.rgb * gs.a * srcHov * uAurora * uBounce * facing2 * fall;
     col += lc * (band * 0.85 + wall * 0.25);
   }
@@ -422,7 +429,7 @@ void main() {
     float spreadW = (j == 0 ? hsr.x * 0.8 : srcR) * (0.8 + travel * 1.5 / srcR * 0.5);
     float lat = exp(-pow(toP.x / spreadW, 2.0));
     float reach = exp(-pow(travel / (srcR * 1.6), 2.0));
-    vec4 gs = glowField(atan(toP.y, toP.x) * (j == 0 ? 1.0 : 2.3) + srcPh, uTime);
+    vec4 gs = glowField(atan(toP.y, toP.x) * (j == 0 ? 1.0 : 2.0) + srcPh, uTime);
     // the glass is transparent: the pool continues behind the body,
     // seen through the material and dimmed by it, instead of being cut
     // off at the silhouette
@@ -450,7 +457,7 @@ void main() {
     }
     if (srcHov * uAurora < 0.004) continue;
     vec2 urB = (q - srcP) / srcR;
-    vec4 gs = glowField(atan(urB.y, urB.x) * (j == 0 ? 1.0 : 2.3) + srcPh, uTime);
+    vec4 gs = glowField(atan(urB.y, urB.x) * (j == 0 ? 1.0 : 2.0) + srcPh, uTime);
     float dOut = max(dB, 0.0);
     float bl = exp(-dOut * 34.0) * 0.30 + exp(-dOut * 9.0) * 0.10;
     col += gs.rgb * gs.a * bl * outside * uAurora * srcHov * uHalo;
