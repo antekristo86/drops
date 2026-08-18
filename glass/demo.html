@@ -379,11 +379,23 @@ canvas.addEventListener('pointerdown', e => {
   tx = lx; ty = ly;
   canvas.setPointerCapture(e.pointerId);
   canvas.style.cursor = 'grabbing';
+  // pressing squeezes the glass: flatter, wider, held down a notch.
+  // a kick into the jelly springs, not an animation
+  dYv -= 1.6;
+  dXv += 1.1;
+  scaleT = 0.95;
 });
-addEventListener('pointerup', () => {
+addEventListener('pointerup', e => {
   if (!dragging) return;
   dragging = false;
   canvas.style.cursor = 'grab';
+  // release: the glass pops back. the jelly gets the opposite kick and
+  // the scale spring a shove, so it overshoots and rings out
+  dYv += 2.1;
+  dXv -= 1.4;
+  scaleV += 0.012;
+  const mx = e.clientX / innerWidth, my = 1 - e.clientY / innerHeight;
+  scaleT = overLens(mx, my) ? 1.12 : 1;
 });
 addEventListener('pointerleave', () => { scaleT = 1; hovT = 0; });
 
