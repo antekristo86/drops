@@ -363,12 +363,14 @@ const uPan = gl.getUniformLocation(prog, 'uPan');
 const uScale = gl.getUniformLocation(prog, 'uScale');
 
 // press D for the panel
+// ante's numbers, dialled in by hand on 2026-08-18. don't touch them
+// without being asked
 const DEFAULTS = {
-  lightAngle: 2.0, lightPower: 0.8, refraction: 0.85, depth: 1.0,
-  dispersion: 0.016, frost: 0.0, splay: 3.5,
-  shapeW: 2.35, shapeH: 0.68, smoke: 0.55, smokePos: 0.00,
-  shadow: 0.14, spacing: 1.0,
-  aurora: 0.75, auroraSpeed: 1.0, auroraRay: 0.34
+  lightAngle: 2.0, lightPower: 0.8, refraction: 0.5, depth: 0.0,
+  dispersion: 0.06, frost: 0.0, splay: 7.3,
+  shapeW: 1.9, shapeH: 0.64, smoke: 1.0, smokePos: -0.28,
+  shadow: 0.6, spacing: 0.93,
+  aurora: 0.12, auroraSpeed: 3.0, auroraRay: 0.47
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
