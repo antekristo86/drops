@@ -89,6 +89,8 @@ uniform float uHover;    // springed 0..1, the aurora breathes in on hover
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uDeform;    // squash and stretch, from the physics
+uniform vec2 uRipPos;    // where the click landed, in body space
+uniform float uRipAge;   // seconds since, large when idle
 
 // a rectangle with rounded corners. exact sdf
 float lensField(vec2 q, vec2 c, float r) {
@@ -189,6 +191,17 @@ void main() {
 
     vec2 base = vUv - (q - c) / vec2(aspect, 1.0) * mag;
     vec2 off  = dir * push * hs / vec2(aspect, 1.0);
+
+    // a click is swallowed by the glass and carried off as one ring.
+    // the wavefront runs out from the click point, bends the image as
+    // it passes, and dies on its way. a disturbance, not a decoration
+    if (uRipAge < 1.2) {
+      vec2 rv = u - uRipPos;
+      float rd = length(rv);
+      float w = rd - uRipAge * 3.4;
+      float prof = exp(-w * w / 0.035) * exp(-uRipAge * 2.6);
+      base += (rv / max(rd, 1e-4)) * prof * 0.11 * hs.y / vec2(aspect, 1.0);
+    }
 
     // spectral spread: sample across a run of wavelengths and weight each
     // by its colour. three channels at three offsets gives hard red and
@@ -338,6 +351,8 @@ for (const k in DEFAULTS) U[k] = gl.getUniformLocation(prog, 'u' + k[0].toUpperC
 const uLens = gl.getUniformLocation(prog, 'uLens');
 const uRU = gl.getUniformLocation(prog, 'uR');
 const uDeform = gl.getUniformLocation(prog, 'uDeform');
+const uRipPos = gl.getUniformLocation(prog, 'uRipPos');
+const uRipAge = gl.getUniformLocation(prog, 'uRipAge');
 const uHover = gl.getUniformLocation(prog, 'uHover');
 
 // ============================================================
@@ -351,6 +366,8 @@ let lx = 0.5, ly = 0.5, vx = 0, vy = 0;
 let tx = 0.5, ty = 0.5;          // where the hand wants it
 let dX = 0, dXv = 0;             // squash springs, one per axis
 let dY = 0, dYv = 0;
+let ripX = 0, ripY = 0, ripT = -9; // the click ripple
+let downMx = 0, downMy = 0;
 
 let scale = 1, scaleT = 1, scaleV = 0;
 // the aurora breathes in on hover instead of switching on
@@ -385,6 +402,7 @@ canvas.addEventListener('pointerdown', e => {
   tx = lx; ty = ly;
   canvas.setPointerCapture(e.pointerId);
   canvas.style.cursor = 'grabbing';
+  downMx = mx; downMy = my;
   // pressing: the held rest point does the sinking; the kick on top
   // gives the impact. one system, one clock
   dYv -= 1.1;
@@ -400,6 +418,13 @@ addEventListener('pointerup', e => {
   dXv += 0.7;
   const mx = e.clientX / innerWidth, my = 1 - e.clientY / innerHeight;
   scaleT = overLens(mx, my) ? 1.12 : 1;
+  // a click, not a drag: the ring starts where the finger left
+  if (Math.hypot(mx - downMx, my - downMy) < 0.012) {
+    const { hw, hh } = lensHalf();
+    ripX = (mx - lx) / hw;
+    ripY = (my - ly) / hh;
+    ripT = performance.now();
+  }
 });
 addEventListener('pointerleave', () => { scaleT = 1; hovT = 0; });
 
@@ -497,6 +522,8 @@ function frame(t) {
   gl.uniform1f(uRU, 0.13);
   const [ux, uy] = deformNow();
   gl.uniform2f(uDeform, ux, uy);
+  gl.uniform2f(uRipPos, ripX, ripY);
+  gl.uniform1f(uRipAge, ripT < 0 ? 99 : (now - ripT) / 1000);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   requestAnimationFrame(frame);
 }
