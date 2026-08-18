@@ -152,29 +152,30 @@ vec3 spectral(float k) {
   return   mix(dq,   blue,   smoothstep(0.80, 1.00, k));
 }
 
-// the hover glow, thin-film style. a rotating rainbow is the cheapest
-// trick there is, so instead: a slow interference field runs along the
-// outline. light collects in a few travelling pools, parts of the rim
-// stay dark, and hue and brightness ride the same phase, the way film
-// thickness drives both on a soap bubble. incommensurate frequencies,
-// so the pattern never visibly repeats
+// the rim aurora. colour flows around the outline for real: a cyclic
+// hue wheel travels one way and two comets with soft tails orbit at
+// their own speeds, one against the stream. the bright moments are
+// where they meet; between them the rim is allowed to be dark. one
+// cold family only, teal into blue into violet, no rainbow
+vec3 aurHue(float x) {
+  float k = 0.5 + 0.5 * sin(x * 6.28318);
+  vec3 teal   = vec3(0.25, 0.92, 1.00);
+  vec3 blue   = vec3(0.30, 0.45, 1.00);
+  vec3 violet = vec3(0.62, 0.40, 1.00);
+  return mix(mix(teal, blue, min(k * 2.0, 1.0)),
+             violet, max(k * 2.0 - 1.0, 0.0));
+}
+// a bright head with a soft tail, periodic in the angle
+float comet(float a, float head, float sharp) {
+  return exp((cos(a - head) - 1.0) * sharp);
+}
 vec4 glowField(float ang, float t) {
   float ts = t * uAuroraSpeed;
-  float ph = sin(ang * 3.0 + ts * 0.23)  * 0.50
-           + sin(ang * 5.0 - ts * 0.161 + 1.7) * 0.30
-           + sin(ang * 2.0 + ts * 0.097 + 4.1) * 0.28;
-
-  // pools: the field sharpened, so light gathers instead of ringing
-  float pool = pow(clamp(ph * 0.6 + 0.5, 0.0, 1.0), 2.6);
-
-  // hue from the same phase, one octave apart
-  float k = 0.5 + 0.5 * sin(ph * 2.2 + ts * 0.05);
-  vec3 teal   = vec3(0.20, 0.95, 0.90);
-  vec3 violet = vec3(0.55, 0.35, 1.00);
-  vec3 pink   = vec3(1.00, 0.45, 0.80);
-  vec3 h = mix(mix(teal, violet, smoothstep(0.0, 0.55, k)),
-               pink, smoothstep(0.55, 1.0, k));
-  return vec4(h, pool);
+  vec3 hue = aurHue(ang / 6.28318 - ts * 0.045);
+  float amp = 0.26
+            + 0.95 * comet(ang, ts * 0.55 + 1.0, 5.0)
+            + 0.70 * comet(ang, -ts * 0.38 + 3.5, 8.0);
+  return vec4(hue, amp);
 }
 
 void main() {
