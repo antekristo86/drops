@@ -224,7 +224,8 @@ void main() {
     vec2 hs = vec2(uR * uShapeW * (1.0 + uDeform.x),
                    uR * uShapeH * (1.0 + uDeform.y)) * uScale;
     vec2 u = (q - c) / hs;
-    float r = min(pow(pow(abs(u.x), 6.0) + pow(abs(u.y), 6.0), 1.0 / 6.0), 1.0);
+    float rRaw = pow(pow(abs(u.x), 6.0) + pow(abs(u.y), 6.0), 1.0 / 6.0);
+    float r = min(rRaw, 1.0);
     vec2 dir = length(u) > 1e-5 ? normalize(u) : vec2(0.0);
 
     // inside a droplet, that droplet is the lens. a soft handover in
@@ -238,7 +239,10 @@ void main() {
       if (uDropRs[i] < 1e-4) continue;
       vec2 dc = vec2(uDrops[i].x * aspect, uDrops[i].y);
       float rD = length(q - dc) / uDropRs[i];
-      float wD = smoothstep(0.12, -0.12, rD - r);
+      // compare against the unclamped button radius: a pixel on a circle
+      // belongs to the circle entirely. clamped, every circle rim sat at
+      // fifty-fifty and borrowed half the button's hover glow
+      float wD = smoothstep(0.12, -0.12, rD - rRaw);
       if (wD > 0.001) {
         vec2 dirD = length(q - dc) > 1e-5 ? normalize(q - dc) : vec2(0.0);
         r = mix(r, min(rD, 1.0), wD);
