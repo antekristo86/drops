@@ -449,7 +449,7 @@ addEventListener('pointerup', e => {
     if (!dropOn) {
       dropOn = true;
       dropHome = false;
-      const right = 1 - (lx + hw) > hh * 0.52 * 3.2;
+      const right = 1 - (lx + hw) > hh * 3.2;
       bx = lx + (right ? hw * 0.7 : 0);
       by = ly + (right ? 0 : -hh * 0.7);
       bvx = right ? 1.6 : 0;
@@ -501,16 +501,16 @@ function physics(dt) {
   // back, it dives into the cap and the button swallows it with a gulp
   {
     const { hw, hh } = lensHalf();
-    const RAD = hh * 0.52;
+    const RAD = hh;               // same height as the button
     // the droplet leaves to the right if there is room, otherwise it
     // drips out of the bottom. same physics either way
     const right = 1 - (lx + hw) > RAD * 3.2;
     const ex = right ? 1 : 0, ey = right ? 0 : -1;
     const capX = lx + ex * hw * 0.92, capY = ly + ey * hh * 0.92;
     const tx2 = dropHome ? capX - ex * RAD * 0.6
-                         : lx + ex * (hw + RAD * 1.9);
+                         : lx + ex * (hw + RAD * 1.6);
     const ty2 = dropHome ? capY - ey * RAD * 0.6
-                         : ly + ey * (hh + RAD * 1.9);
+                         : ly + ey * (hh + RAD * 1.6);
     if (dropOn || dropHome) {
       const bk = 210, bd = 2 * Math.sqrt(bk) * 0.55;
       bvx += (bk * (tx2 - bx) - bd * bvx) * dt;
