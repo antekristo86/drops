@@ -130,29 +130,14 @@ vec3 spectral(float k) {
   return   mix(dq,   blue,   smoothstep(0.80, 1.00, k));
 }
 
-// the hover glow, thin-film style. a rotating rainbow is the cheapest
-// trick there is, so instead: a slow interference field runs along the
-// outline. light collects in a few travelling pools, parts of the rim
-// stay dark, and hue and brightness ride the same phase, the way film
-// thickness drives both on a soap bubble. incommensurate frequencies,
-// so the pattern never visibly repeats
-vec4 glowField(float ang, float t) {
+// hover: a light turns on behind the glass and the lens does what a
+// lens does: it gathers the light into a bright focus inside the body.
+// the source wanders slowly, so the focus wanders with it. where the
+// light stands, this returns its position in body space
+vec2 lightPos(float t) {
   float ts = t * uAuroraSpeed;
-  float ph = sin(ang * 3.0 + ts * 0.23)  * 0.50
-           + sin(ang * 5.0 - ts * 0.161 + 1.7) * 0.30
-           + sin(ang * 2.0 + ts * 0.097 + 4.1) * 0.28;
-
-  // pools: the field sharpened, so light gathers instead of ringing
-  float pool = pow(clamp(ph * 0.6 + 0.5, 0.0, 1.0), 2.6);
-
-  // hue from the same phase, one octave apart
-  float k = 0.5 + 0.5 * sin(ph * 2.2 + ts * 0.05);
-  vec3 teal   = vec3(0.20, 0.95, 0.90);
-  vec3 violet = vec3(0.55, 0.35, 1.00);
-  vec3 pink   = vec3(1.00, 0.45, 0.80);
-  vec3 h = mix(mix(teal, violet, smoothstep(0.0, 0.55, k)),
-               pink, smoothstep(0.55, 1.0, k));
-  return vec4(h, pool);
+  return vec2(0.52 * sin(ts * 0.19) + 0.18 * sin(ts * 0.47 + 1.3),
+              0.16 + 0.10 * sin(ts * 0.27 + 0.7));
 }
 
 void main() {
@@ -225,14 +210,25 @@ void main() {
     smoke = smoke * smoke * (3.0 - 2.0 * smoke);
     col = mix(col, col * 0.10, smoke * uSmoke);
 
-    // the glow clings to the inside of the outline and is gone before
-    // the middle. where a pool stands, it also bleeds a little deeper
-    float ga = atan(u.y, u.x);
-    vec4 gf = glowField(ga, uTime);
-    float reach = uAuroraRay * (0.7 + 0.5 * gf.a);
-    float glow = pow(smoothstep(1.0 - reach, 1.0, r), 1.6)
-               * gf.a * uAurora * uHover;
-    col += gf.rgb * glow * 0.62;
+    // the focus. each wavelength gathers at a slightly different spot,
+    // so the hot core is white and its skirt breaks into colour: real
+    // chromatic aberration, not a painted ring. the body is wider than
+    // tall, so the focus is a streak, not a dot
+    if (uHover > 0.001 && uAurora > 0.001) {
+      vec2 lp = lightPos(uTime);
+      vec3 acc = vec3(0.0);
+      for (int i = 0; i < 5; i++) {
+        float k = float(i) / 4.0;
+        vec2 fp = lp * (1.0 + (k - 0.5) * 0.14);
+        vec2 dv = (u - fp) * vec2(1.0, 2.4) / uAuroraRay;
+        acc += (spectral(k) + 0.6) * exp(-dot(dv, dv) * 3.0);
+      }
+      acc *= 0.2;
+      // a faint flare runs along the body through the focus
+      float fl = exp(-pow((u.y - lp.y) * 3.2 / uAuroraRay, 2.0))
+               * exp(-abs(u.x - lp.x) * 1.6) * 0.22;
+      col += (acc + vec3(1.0, 0.98, 0.92) * fl) * uAurora * uHover;
+    }
 
     // the only colour in here comes from the dispersion above
     float band = smoothstep(0.14, 0.02, depth) * smoothstep(0.0, 0.02, depth);
@@ -272,11 +268,22 @@ void main() {
   vec2 hsr = vec2(uR * uShapeW * (1.0 + uDeform.x),
                   uR * uShapeH * (1.0 + uDeform.y)) * uScale;
   vec2 ur = (q - c) / hsr;
-  vec4 gfr = glowField(atan(ur.y, ur.x), uTime);
-  float aglow = uAurora * uHover * gfr.a;
-  vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), gfr.rgb, clamp(aglow * 1.1, 0.0, 1.0));
-  col += gfr.rgb * band * aglow * 0.55;
-  col += gfr.rgb * wall * aglow * 0.17;
+  // the stretch of rim closest to the light catches it. the far side
+  // stays dark, which is what tells you the light has a place
+  vec2 lpr = lightPos(uTime);
+  float ldist = length(ur - lpr);
+  float lnear = exp(-ldist * ldist * 1.4);
+  float aglow = uAurora * uHover * lnear;
+  vec3 lightCol = vec3(1.0, 0.97, 0.90);
+  vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), lightCol, clamp(aglow, 0.0, 1.0));
+  col += lightCol * band * aglow * 0.50;
+  col += lightCol * wall * aglow * 0.15;
+
+  // and a faint pool lands on the ground under the body, under the light
+  float poolX = (q.x - (c.x + lpr.x * hsr.x)) / (hsr.x * 0.7);
+  float poolY = (q.y - (c.y - hsr.y * 1.35)) / (hsr.y * 0.8);
+  float pool = exp(-(poolX * poolX + poolY * poolY)) * outside;
+  col += lightCol * pool * uAurora * uHover * 0.10;
 
   col += rimCol * band * lit * uLightPower * 0.35;
   col += rimCol * band * tir * uLightPower * 0.62;
@@ -324,7 +331,7 @@ const DEFAULTS = {
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.55, smokePos: 0.00,
   shadow: 0.14,
-  aurora: 0.75, auroraSpeed: 1.0, auroraRay: 0.34
+  aurora: 0.80, auroraSpeed: 1.0, auroraRay: 0.42
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
