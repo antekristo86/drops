@@ -83,6 +83,9 @@ uniform float uSplay;                     // how sharply the rim flares
 // this piece specifically
 uniform float uShapeW, uShapeH, uSmoke, uSmokePos;
 uniform float uShadow;
+// the aurora: how bright, how fast it drifts, how tall the rays stand
+uniform float uAurora, uAuroraSpeed, uAuroraRay;
+uniform float uHover;    // springed 0..1, the aurora breathes in on hover
 uniform vec2 uLens;      // lens center, uv
 uniform float uR;        // lens radius, uv (y-normalized)
 uniform vec2 uDeform;    // squash and stretch, from the physics
@@ -125,6 +128,40 @@ vec3 spectral(float k) {
   vec3 cq = mix(b,   green,  smoothstep(0.42, 0.60, k));
   vec3 dq = mix(cq,  cyan,   smoothstep(0.60, 0.80, k));
   return   mix(dq,   blue,   smoothstep(0.80, 1.00, k));
+}
+
+// aurora, the real mechanism: curtains, not bands. a curtain is a sheet
+// of vertical rays. its lower border is sharp, the rays fade upward, and
+// the colour is altitude chemistry: green low, violet high. the curtains
+// drift and breathe, they do not scroll
+vec3 auroraField(vec2 u, float t) {
+  float amp = uAurora * uHover;
+  if (amp < 0.001) return vec3(0.0);
+  vec3 acc = vec3(0.0);
+  for (int i = 0; i < 3; i++) {
+    float fi = float(i);
+    // where this curtain stands right now, and how wide it is
+    float cx = 0.62 * sin(t * uAuroraSpeed * (0.21 + 0.06 * fi) + fi * 2.4);
+    float wd = 0.34 + 0.10 * sin(t * 0.17 + fi * 1.9);
+    float body = exp(-pow((u.x - cx) / wd, 2.0));
+
+    // vertical rays: fine columns inside the curtain, each flickering
+    // slightly. this is what makes it aurora and not fog
+    float ray = 0.72 + 0.28 * sin(u.x * 46.0 + fi * 7.0
+                                  + 1.3 * sin(u.x * 9.0 - t * uAuroraSpeed * 0.8));
+
+    // the lower border is sharp, the top runs out. the border itself
+    // waves slowly like the bottom of a curtain
+    float base = -0.30 + 0.14 * sin(u.x * 2.6 - t * uAuroraSpeed * 0.5 + fi * 1.1);
+    float h = (u.y - base) / uAuroraRay;
+    float vert = smoothstep(-0.06, 0.10, h) * exp(-max(h, 0.0) * 1.9);
+
+    // altitude chemistry: oxygen green low, nitrogen violet high
+    vec3 hue = mix(vec3(0.20, 1.00, 0.55), vec3(0.55, 0.30, 1.00),
+                   smoothstep(0.15, 0.95, h));
+    acc += hue * body * ray * vert;
+  }
+  return acc * amp * 0.55;
 }
 
 void main() {
@@ -197,6 +234,11 @@ void main() {
     smoke = smoke * smoke * (3.0 - 2.0 * smoke);
     col = mix(col, col * 0.10, smoke * uSmoke);
 
+    // the aurora sits inside the body, behind the front surface, so the
+    // same bend that warps the background carries it
+    vec2 apos = u - dir * push * 0.9;
+    col += auroraField(apos, uTime);
+
     // the only colour in here comes from the dispersion above
     float band = smoothstep(0.14, 0.02, depth) * smoothstep(0.0, 0.02, depth);
     float topness = clamp((q.y - c.y) / uR, -1.0, 1.0);
@@ -230,7 +272,19 @@ void main() {
   float down  = clamp(-dot(nrm, L), 0.0, 1.0);
   float tir   = pow(down, 1.6);
 
-  vec3 rimCol = vec3(1.0, 0.99, 0.96);
+  // the wall carries the colour of whatever shines on it from inside.
+  // sample the aurora just inside the rim: no light there, no tint
+  vec2 hsr = vec2(uR * uShapeW * (1.0 + uDeform.x),
+                  uR * uShapeH * (1.0 + uDeform.y)) * uScale;
+  vec2 ur = (q - c) / hsr;
+  vec3 asamp = auroraField(ur * 0.86, uTime)
+             + auroraField(ur * 0.70, uTime);
+  float alum = max(max(asamp.r, asamp.g), asamp.b);
+  vec3 acol = alum > 1e-4 ? asamp / alum : vec3(1.0);
+  float aglow = clamp(alum * 1.4, 0.0, 1.0);
+  vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), acol, aglow * 0.85);
+  col += acol * band * aglow * 0.55;
+  col += acol * wall * aglow * 0.16;
 
   col += rimCol * band * lit * uLightPower * 0.35;
   col += rimCol * band * tir * uLightPower * 0.62;
@@ -277,7 +331,8 @@ const DEFAULTS = {
   lightAngle: 2.0, lightPower: 0.8, refraction: 0.85, depth: 1.0,
   dispersion: 0.016, frost: 0.0, splay: 3.5,
   shapeW: 2.70, shapeH: 0.68, smoke: 0.55, smokePos: 0.00,
-  shadow: 0.14
+  shadow: 0.14,
+  aurora: 1.30, auroraSpeed: 1.0, auroraRay: 0.72
 };
 const P = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('glassTune') || '{}'));
 const U = {};
@@ -285,6 +340,7 @@ for (const k in DEFAULTS) U[k] = gl.getUniformLocation(prog, 'u' + k[0].toUpperC
 const uLens = gl.getUniformLocation(prog, 'uLens');
 const uRU = gl.getUniformLocation(prog, 'uR');
 const uDeform = gl.getUniformLocation(prog, 'uDeform');
+const uHover = gl.getUniformLocation(prog, 'uHover');
 
 // ============================================================
 // physics. the glass is a thing you can throw. while dragging it
@@ -299,6 +355,8 @@ let dX = 0, dXv = 0;             // squash springs, one per axis
 let dY = 0, dYv = 0;
 
 let scale = 1, scaleT = 1, scaleV = 0;
+// the aurora breathes in on hover instead of switching on
+let hov = 0, hovT = 0, hovV = 0;
 let dragging = false, grabX = 0, grabY = 0;
 
 function lensHalf() {
@@ -316,6 +374,7 @@ addEventListener('pointermove', e => {
   if (dragging) { tx = mx - grabX; ty = my - grabY; return; }
   const inside = overLens(mx, my);
   scaleT = inside ? 1.12 : 1;
+  hovT = inside ? 1 : 0;
   canvas.style.cursor = inside ? 'grab' : 'crosshair';
 });
 
@@ -334,7 +393,7 @@ addEventListener('pointerup', () => {
   dragging = false;
   canvas.style.cursor = 'grab';
 });
-addEventListener('pointerleave', () => { scaleT = 1; });
+addEventListener('pointerleave', () => { scaleT = 1; hovT = 0; });
 
 function physics(dt) {
   // the button has a home. pulling it away is an argument with a spring
@@ -409,6 +468,10 @@ function frame(t) {
 
   scaleV += (scaleT - scale) * 0.045 - scaleV * 0.26;
   scale += scaleV;
+  const ht = dragging ? 1 : hovT;
+  hovV += (ht - hov) * 0.030 - hovV * 0.24;
+  hov += hovV;
+  gl.uniform1f(uHover, Math.max(0, hov));
   gl.uniform1f(uScale, scale);
   for (const k in DEFAULTS) gl.uniform1f(U[k], P[k]);
   // the artwork drifts slowly, so its light-to-dark edge crosses the lens
@@ -433,7 +496,8 @@ const RANGES = {
   splay: [1.5, 10, 0.1],
   shapeW: [0.5, 4, 0.05], shapeH: [0.2, 2, 0.02], smoke: [0, 1, 0.01],
   smokePos: [-0.8, 0.8, 0.02],
-  shadow: [0, 0.6, 0.01]
+  shadow: [0, 0.6, 0.01],
+  aurora: [0, 2, 0.02], auroraSpeed: [0, 3, 0.02], auroraRay: [0.15, 1.5, 0.01]
 };
 const panel = document.getElementById('tune');
 panel.innerHTML = Object.keys(RANGES).map(k => {
