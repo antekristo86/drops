@@ -130,6 +130,31 @@ vec3 spectral(float k) {
   return   mix(dq,   blue,   smoothstep(0.80, 1.00, k));
 }
 
+// the hover glow, thin-film style. a rotating rainbow is the cheapest
+// trick there is, so instead: a slow interference field runs along the
+// outline. light collects in a few travelling pools, parts of the rim
+// stay dark, and hue and brightness ride the same phase, the way film
+// thickness drives both on a soap bubble. incommensurate frequencies,
+// so the pattern never visibly repeats
+vec4 glowField(float ang, float t) {
+  float ts = t * uAuroraSpeed;
+  float ph = sin(ang * 3.0 + ts * 0.23)  * 0.50
+           + sin(ang * 5.0 - ts * 0.161 + 1.7) * 0.30
+           + sin(ang * 2.0 + ts * 0.097 + 4.1) * 0.28;
+
+  // pools: the field sharpened, so light gathers instead of ringing
+  float pool = pow(clamp(ph * 0.6 + 0.5, 0.0, 1.0), 2.6);
+
+  // hue from the same phase, one octave apart
+  float k = 0.5 + 0.5 * sin(ph * 2.2 + ts * 0.05);
+  vec3 teal   = vec3(0.20, 0.95, 0.90);
+  vec3 violet = vec3(0.55, 0.35, 1.00);
+  vec3 pink   = vec3(1.00, 0.45, 0.80);
+  vec3 h = mix(mix(teal, violet, smoothstep(0.0, 0.55, k)),
+               pink, smoothstep(0.55, 1.0, k));
+  return vec4(h, pool);
+}
+
 void main() {
   float aspect = uRes.x / uRes.y;
   vec2 q = vec2(vUv.x * aspect, vUv.y);
@@ -200,14 +225,14 @@ void main() {
     smoke = smoke * smoke * (3.0 - 2.0 * smoke);
     col = mix(col, col * 0.10, smoke * uSmoke);
 
-    // the shine: lit from below. a warm-white bloom stands on the
-    // bottom edge and runs out on its way up, a touch stronger in the
-    // middle of the run than at the caps. it breathes, barely
-    float upb = (u.y + 1.0) / max(uAuroraRay * 2.0, 0.05);
-    float shine = exp(-upb * upb)
-                * (1.0 - u.x * u.x * 0.35)
-                * (0.92 + 0.08 * sin(uTime * 0.7));
-    col += vec3(1.0, 0.99, 0.96) * shine * uAurora * uHover * 0.85;
+    // the glow clings to the inside of the outline and is gone before
+    // the middle. where a pool stands, it also bleeds a little deeper
+    float ga = atan(u.y, u.x);
+    vec4 gf = glowField(ga, uTime);
+    float reach = uAuroraRay * (0.7 + 0.5 * gf.a);
+    float glow = pow(smoothstep(1.0 - reach, 1.0, r), 1.6)
+               * gf.a * uAurora * uHover;
+    col += gf.rgb * glow * 0.62;
 
     // the only colour in here comes from the dispersion above
     float band = smoothstep(0.14, 0.02, depth) * smoothstep(0.0, 0.02, depth);
@@ -247,16 +272,11 @@ void main() {
   vec2 hsr = vec2(uR * uShapeW * (1.0 + uDeform.x),
                   uR * uShapeH * (1.0 + uDeform.y)) * uScale;
   vec2 ur = (q - c) / hsr;
-  // the bottom edge burns white-hot and the light spills out under the
-  // body as a soft halo. the top edge stays as it was
-  float downness = smoothstep(0.1, -0.6, (q.y - c.y) / hsr.y);
-  float aglow = uAurora * uHover * downness;
-  vec3 shineCol = vec3(1.0, 0.99, 0.96);
-  vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), shineCol, 0.0);
-  col += shineCol * band * aglow * 0.9;
-  col += shineCol * wall * aglow * 0.28;
-  float halo = exp(-max(d, 0.0) * 26.0) * downness * outside;
-  col += shineCol * halo * uAurora * uHover * 0.30;
+  vec4 gfr = glowField(atan(ur.y, ur.x), uTime);
+  float aglow = uAurora * uHover * gfr.a;
+  vec3 rimCol = mix(vec3(1.0, 0.99, 0.96), gfr.rgb, clamp(aglow * 1.1, 0.0, 1.0));
+  col += gfr.rgb * band * aglow * 0.55;
+  col += gfr.rgb * wall * aglow * 0.17;
 
   col += rimCol * band * lit * uLightPower * 0.35;
   col += rimCol * band * tir * uLightPower * 0.62;
