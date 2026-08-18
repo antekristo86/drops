@@ -411,17 +411,42 @@ void main() {
   }
 
   // the light does not stop at the wall: where a pool stands, a soft
-  // bloom breathes past the rim into the dark. two widths layered, a
-  // tight hot seam and a wide faint veil, which is what real bloom is
-  float dOut = max(d, 0.0);
-  float bloom = exp(-dOut * 34.0) * 0.30 + exp(-dOut * 9.0) * 0.10;
-  col += gfr.rgb * bloom * outside * aglow;
+  // bloom breathes past the rim into the dark. one bloom per body,
+  // summed, because light superposes. running it off the union field
+  // instead prints the field's medial-axis creases as hard seams the
+  // moment the level goes up
+  for (int j = 0; j < 4; j++) {
+    vec2 srcP; float srcHov; float srcR; float srcPh; float dB;
+    if (j == 0) {
+      srcP = c; srcHov = uHover; srcR = hsr.y; srcPh = 0.0;
+      dB = lensField(q, c, uR) / gm;
+    } else {
+      if (uDropRs[j - 1] < 1e-4) continue;
+      srcP = vec2(uDrops[j - 1].x * aspect, uDrops[j - 1].y);
+      srcHov = uDropHov[j - 1];
+      srcR = uDropRs[j - 1];
+      srcPh = float(j) * 2.13;
+      dB = length(q - srcP) - srcR;
+    }
+    if (srcHov * uAurora < 0.004) continue;
+    vec2 urB = (q - srcP) / srcR;
+    vec4 gs = glowField(atan(urB.y, urB.x) + srcPh, uTime);
+    float dOut = max(dB, 0.0);
+    float bl = exp(-dOut * 34.0) * 0.30 + exp(-dOut * 9.0) * 0.10;
+    col += gs.rgb * gs.a * bl * outside * uAurora * srcHov;
+  }
 
   col += rimCol * band * lit * uLightPower * 0.35;
   col += rimCol * band * tir * uLightPower * 0.62;
   col += rimCol * wall * tir * uLightPower * 0.12;
   col += vec3(0.85, 0.9, 1.0) * wall * lit * 0.04;
   col += vec3(1.0) * band * 0.04;
+
+  // soft clip. additive light past 1.0 would slice flat and print hard
+  // edges where a channel hits the ceiling; this rolls it off smoothly,
+  // and hot spots whiten on the way, which is what overdriven light does
+  vec3 over = max(col - vec3(0.82), vec3(0.0));
+  col = min(col, vec3(0.82)) + (vec3(1.0) - exp(-over * 3.2)) * 0.18;
 
   // a hair of dither: dark glows on black band in 8 bit without it
   col += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0;
