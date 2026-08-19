@@ -16,11 +16,7 @@
     position: absolute; left: 50%; top: 50%;
     width: min(46vw, 340px);
     aspect-ratio: 16 / 10;
-    background: #000;
-    border: 1px solid rgba(255,255,255,0.25);
-    color: #fff;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 28px; letter-spacing: 0.1em;
+    background: #000 center / cover no-repeat;
     will-change: transform, opacity;
   }
 </style>
@@ -32,7 +28,7 @@
 // scrolling, momentum with friction on release, the deceleration steered
 // onto the predicted card. velocity is continuous through the whole arc.
 // hitting an edge with speed bumps like a scroll view.
-const COUNT = 7;
+const COUNT = 8;
 const GAP = 900;
 const MAXZ = (COUNT - 1) * GAP;
 
@@ -41,7 +37,7 @@ const plates = [];
 for (let i = 0; i < COUNT; i++) {
   const el = document.createElement('div');
   el.className = 'plate';
-  el.textContent = String(i + 1).padStart(2, '0');
+  el.style.backgroundImage = `url(img/0${i + 1}.jpg)`;
   space.appendChild(el);
   plates.push(el);
 }
