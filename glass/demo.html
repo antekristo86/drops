@@ -925,6 +925,10 @@ window.__solid = (mx, my) => overLens(mx, my) || overDrop(mx, my) >= 0;
 // returns whether there was anything to recall; __busy reports whether
 // the swallowing is still in progress
 window.__recall = () => {
+  // the goodbye also lets go of the hover: a cursor parked on the glass
+  // must not hold the swell up while the host waits for stillness
+  hovT = 0;
+  drops.forEach(D => { D.hovT = 0; });
   if (!dropOn && !dropHome) return false;
   if (dropOn) {
     dropOn = false;
