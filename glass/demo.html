@@ -916,6 +916,10 @@ document.getElementById('reset').addEventListener('click', () => {
 addEventListener('keydown', e => {
   if (e.key === 'd' || e.key === 'D') panel.classList.toggle('on');
 });
+
+// for hosts embedding this demo: is there glass under this uv point?
+// lets a wrapper close on empty clicks and stay open on real ones
+window.__solid = (mx, my) => overLens(mx, my) || overDrop(mx, my) >= 0;
 </script>
 </body>
 </html>
