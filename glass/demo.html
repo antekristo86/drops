@@ -29,7 +29,7 @@
 // refraction with chromatic split, a prismatic rim, a moving sheen.
 // the lens follows the cursor with inertia.
 const canvas = document.getElementById('c');
-const gl = canvas.getContext('webgl', { antialias: false });
+const gl = canvas.getContext('webgl', { antialias: false, preserveDrawingBuffer: true });
 
 // ---- background: a lockscreen-ish surface drawn once ----
 const tex2d = document.createElement('canvas');
