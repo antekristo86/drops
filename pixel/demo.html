@@ -171,7 +171,7 @@ window.__recall = () => {
   // critically damped spring back to the top. velocity is continuous,
   // long distances arrive faster but nothing ever snaps
   let sy = scrollY, sv = 0, last = performance.now();
-  const k = 42, d = 2 * Math.sqrt(k);
+  const k = 110, d = 2 * Math.sqrt(k);
   const step = (now) => {
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
