@@ -1,4 +1,4 @@
-# liquid glass
+# jelly glass
 
 Four glass bodies in one fragment shader. A button and, on click, three
 droplets that separate from it like liquid and get swallowed back.
