@@ -933,7 +933,14 @@ window.__recall = () => {
   }
   return true;
 };
-window.__busy = () => dropOn || dropHome;
+// busy until everything truly stands still: fleet home, the centring
+// slide returned, the jelly rung out, the button back on its anchor.
+// closing one frame earlier hands a moving button to a calm preview
+window.__busy = () =>
+  dropOn || dropHome ||
+  Math.abs(sh) > 0.003 || Math.abs(shV) > 0.02 ||
+  Math.abs(dX) > 0.03 || Math.abs(dY) > 0.03 ||
+  Math.abs(lx - homeXg) > 0.005 || Math.abs(ly - homeYg) > 0.005;
 </script>
 </body>
 </html>
