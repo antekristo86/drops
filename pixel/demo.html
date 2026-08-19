@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>pixel scroll</title>
+<style>
+  html, body { margin: 0; background: #000; cursor: crosshair; }
+  html { overflow-x: hidden; }
+  /* the placeholders only make the page tall and mark where the images
+     live. the pixels themselves come from the one canvas on top */
+  .ph {
+    width: min(72vw, 900px);
+    aspect-ratio: 1456 / 816;
+    margin: 34vh auto;
+  }
+  /* the first image sits dead center when the page opens:
+     50vh minus half its height (width * 816/1456 / 2) */
+  .ph:first-child { margin-top: calc(50vh - min(72vw, 900px) * 0.2802); }
+  .ph:last-child { margin-bottom: 44vh; }
+  canvas {
+    position: fixed; inset: 0; width: 100vw; height: 100vh;
+    display: block; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="phs"></div>
+<canvas id="c"></canvas>
+<script>
+// pixel scroll. images materialise out of pixel blocks at the bottom of
+// the viewport: each cell pops in as an opaque block, then sharpens as it
+// rises, with per-cell jitter so the wavefront stays organic. the scroll
+// is the animation, nothing is keyframed.
+const N = 8;
+const phs = document.getElementById('phs');
+const rects = [];
+for (let i = 0; i < N; i++) {
+  const d = document.createElement('div');
+  d.className = 'ph';
+  phs.appendChild(d);
+  rects.push(d);
+}
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl', { antialias: false, premultipliedAlpha: false });
+
+const vsSrc = `
+attribute vec2 p;               // unit quad, 0..1
+uniform vec4 uRect;             // x, y, w, h in css px, y from top
+uniform vec2 uView;             // viewport size in css px
+varying vec2 vUv;
+void main() {
+  vUv = vec2(p.x, 1.0 - p.y);   // vUv.y = 1 at the top of the image
+  vec2 px = uRect.xy + p * uRect.zw;
+  vec2 clip = vec2(px.x / uView.x * 2.0 - 1.0, 1.0 - px.y / uView.y * 2.0);
+  gl_Position = vec4(clip, 0.0, 1.0);
+}`;
+
+const fsSrc = `
+precision mediump float;
+uniform sampler2D uTex;
+uniform vec2 uResolution;    // image px, for cover
+uniform vec2 uContainerRes;  // box px
+uniform float uCell;         // css px per pixel block
+uniform float uBoxTop;       // box top in viewport px
+uniform float uViewH;        // viewport height px
+uniform float uReach;        // how far above the bottom the effect spans
+varying vec2 vUv;
+
+float random(vec2 st){ return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123); }
+
+// object-fit: cover
+vec2 coverUv(vec2 uv){
+  float imgAsp = uResolution.x / uResolution.y;
+  float boxAsp = uContainerRes.x / uContainerRes.y;
+  vec2 ratio = (boxAsp > imgAsp) ? vec2(1.0, imgAsp / boxAsp) : vec2(boxAsp / imgAsp, 1.0);
+  return (uv - 0.5) * ratio + 0.5;
+}
+
+void main(){
+  vec2 cellN = vec2(uCell) / uContainerRes;
+  vec2 cell = floor(vUv / cellN);
+  vec2 cellCenter = (cell + 0.5) * cellN;
+
+  vec3 sharp = texture2D(uTex, coverUv(vUv)).rgb;
+  vec3 block = texture2D(uTex, coverUv(cellCenter)).rgb;
+
+  // this cell's height above the viewport bottom, 0 at the bottom edge,
+  // 1 at the top of the zone. higher cells resolve first
+  float screenY = uBoxTop + (1.0 - cellCenter.y) * uContainerRes.y;
+  float s = (uViewH - screenY) / uReach;
+
+  float jit = random(cell) * 0.5;
+  float p = clamp(s - jit, 0.0, 1.0);
+  float sharpen = smoothstep(0.12, 0.6, p);
+  float pop = smoothstep(0.0, 0.1, p);
+
+  vec3 rgb = mix(block, sharp, sharpen);
+  gl_FragColor = vec4(rgb, pop);
+}`;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s);
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, vsSrc));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fsSrc));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0,0, 1,0, 0,1, 0,1, 1,0, 1,1]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(loc);
+gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+const uRect = gl.getUniformLocation(prog, 'uRect');
+const uView = gl.getUniformLocation(prog, 'uView');
+const uTexL = gl.getUniformLocation(prog, 'uTex');
+const uResolution = gl.getUniformLocation(prog, 'uResolution');
+const uContainerRes = gl.getUniformLocation(prog, 'uContainerRes');
+const uCell = gl.getUniformLocation(prog, 'uCell');
+const uBoxTop = gl.getUniformLocation(prog, 'uBoxTop');
+const uViewH = gl.getUniformLocation(prog, 'uViewH');
+const uReach = gl.getUniformLocation(prog, 'uReach');
+
+gl.enable(gl.BLEND);
+gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+gl.uniform1i(uTexL, 0);
+gl.uniform1f(uCell, 15.0);
+
+// the images. each becomes a texture the moment it arrives
+const texs = [];
+for (let i = 0; i < N; i++) {
+  const img = new Image();
+  img.src = 'img/0' + (i + 1) + '.jpg';
+  img.onload = () => {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    texs[i] = { t, w: img.naturalWidth, h: img.naturalHeight };
+  };
+}
+
+let dpr = 1;
+function resize() {
+  dpr = Math.min(devicePixelRatio, 2);
+  canvas.width = innerWidth * dpr;
+  canvas.height = innerHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+addEventListener('resize', resize);
+resize();
+
+function frame() {
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.uniform2f(uView, innerWidth, innerHeight);
+  gl.uniform1f(uViewH, innerHeight);
+  gl.uniform1f(uReach, Math.min(300, innerHeight * 0.34));
+  for (let i = 0; i < N; i++) {
+    const tex = texs[i];
+    if (!tex) continue;
+    const r = rects[i].getBoundingClientRect();
+    if (r.bottom < 0 || r.top > innerHeight) continue;
+    gl.bindTexture(gl.TEXTURE_2D, tex.t);
+    gl.uniform4f(uRect, r.left, r.top, r.width, r.height);
+    gl.uniform2f(uResolution, tex.w, tex.h);
+    gl.uniform2f(uContainerRes, r.width, r.height);
+    gl.uniform1f(uBoxTop, r.top);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
