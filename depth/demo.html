@@ -82,14 +82,43 @@ function addInput(dy) {
 }
 
 addEventListener('wheel', e => { e.preventDefault(); addInput(e.deltaY); }, { passive: false });
-let touchY = null;
-addEventListener('touchstart', e => { touchY = e.touches[0].clientY; }, { passive: true });
+
+// touch: while the finger is down the stack follows directly. the flick
+// velocity is measured and handed to a synthetic trackpad tail on
+// release, otherwise the momentum dies with the finger and feels heavy
+let touchY = null, touchV = 0, touchT = 0;
+addEventListener('touchstart', e => {
+  touchY = e.touches[0].clientY;
+  touchV = 0;
+  touchT = performance.now();
+}, { passive: true });
 addEventListener('touchmove', e => {
   if (touchY === null) return;
-  addInput((touchY - e.touches[0].clientY) * 3.0);
+  const dyPix = touchY - e.touches[0].clientY;
+  addInput(dyPix * 3.0);
+  const now = performance.now(), dt = now - touchT;
+  if (dt > 0) {
+    const v = dyPix / (dt / 16.7);
+    touchV = touchV * 0.6 + v * 0.4;
+  }
+  touchT = now;
   touchY = e.touches[0].clientY;
 }, { passive: true });
-addEventListener('touchend', () => { touchY = null; });
+addEventListener('touchend', () => {
+  touchY = null;
+  if (bounce) { touchV = 0; return; }
+  if (Math.abs(touchV) > 0.3) {
+    let v = Math.max(-40, Math.min(40, touchV));
+    const momentum = () => {
+      if (touchY !== null || bounce) return;
+      addInput(v * 3.0);
+      v *= 0.95;
+      if (Math.abs(v) > 0.15) requestAnimationFrame(momentum);
+    };
+    requestAnimationFrame(momentum);
+  }
+  touchV = 0;
+});
 
 // programmatic jump: hand the landing slot straight to the deceleration,
 // bypassing the flick prediction
