@@ -49,15 +49,15 @@ function drawBackground() {
   const w = tex2d.width, h = tex2d.height;
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, w, h);
-  const logoW = Math.min(w * 0.30, h * 0.95);
-  const sc = logoW / 936;
-  const logoH = 320 * sc;
-  ctx.save();
-  ctx.translate((w - logoW) / 2, h / 2 - logoH * 0.16);
-  ctx.scale(sc, sc);
-  ctx.fillStyle = '#fff';
-  for (const d of ANTE) ctx.fill(new Path2D(d));
-  ctx.restore();
+  // a quiet, generous grid instead of the wordmark: straight lines are
+  // what the glass is best at bending. static, the lens does the work
+  const step = 96 * dpr;
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = dpr;
+  ctx.beginPath();
+  for (let x = (w / 2) % step; x < w; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+  for (let y = (h / 2) % step; y < h; y += step) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+  ctx.stroke();
 }
 
 const vsSrc = `
