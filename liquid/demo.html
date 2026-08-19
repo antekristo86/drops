@@ -94,13 +94,9 @@ void main() {
   vec2 offset = breathe * 0.0035 + push;
   vec2 suv = uv - offset;
 
-  // square texture mapped to screen center, cover-style
-  vec2 tuv;
-  if (aspect > 1.0) {
-    tuv = vec2(suv.x, (suv.y - 0.5) / aspect + 0.5);
-  } else {
-    tuv = vec2((suv.x - 0.5) * aspect + 0.5, suv.y);
-  }
+  // square texture sized to the screen width, centered. on portrait this
+  // contains the wordmark instead of covering, so nothing runs off screen
+  vec2 tuv = vec2(suv.x, (suv.y - 0.5) / aspect + 0.5);
   tuv.y = 1.0 - tuv.y;
 
   float a = texture2D(uTex, tuv).a;

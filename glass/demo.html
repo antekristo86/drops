@@ -571,13 +571,21 @@ let scale = 1, scaleT = 1, scaleV = 0;
 let hov = 0, hovT = 0, hovV = 0;
 let dragging = false, grabX = 0, grabY = 0;
 
+// sized off the height. on portrait that overruns the width, so the
+// whole body scales down until it keeps a margin
+function respK() {
+  const ar = canvas.width / canvas.height;
+  return Math.min(1, 0.40 * ar / (0.13 * P.shapeW));
+}
+
 function lensHalf() {
   const R = 0.13;
   const ar = canvas.width / canvas.height;
+  const k = respK();
   // the deform is part of the true size: the hitbox follows the wobble
   // and so do the droplet slots, which is what makes everything react
-  return { hw: R * P.shapeW * scale * (1 + dX) / ar,
-           hh: R * P.shapeH * scale * (1 + dY), ar };
+  return { hw: R * P.shapeW * scale * k * (1 + dX) / ar,
+           hh: R * P.shapeH * scale * k * (1 + dY), ar };
 }
 function dropEffR(D) { return D.rad * (1 + D.g); }
 function overDrop(mx, my) {
@@ -863,7 +871,7 @@ function frame(t) {
   gl.uniform2f(uRes, canvas.width, canvas.height);
   gl.uniform1f(uTime, t * 0.001);
   gl.uniform2f(uLens, lx, ly);
-  gl.uniform1f(uRU, 0.13);
+  gl.uniform1f(uRU, 0.13 * respK());
   const [ux, uy] = deformNow();
   gl.uniform2f(uDeform, ux, uy);
   gl.uniform2fv(uDrops, drops.flatMap(D => [D.bx, D.by]));
