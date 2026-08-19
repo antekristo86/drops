@@ -161,6 +161,35 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 
+// the host interface, same contract as jelly glass: on close the page
+// glides back to the first image, and the window waits for stillness
+// before it shrinks, so a still page hands over to a still preview
+let recalling = false;
+window.__recall = () => {
+  if (scrollY < 2 || recalling) return recalling;
+  recalling = true;
+  // critically damped spring back to the top. velocity is continuous,
+  // long distances arrive faster but nothing ever snaps
+  let sy = scrollY, sv = 0, last = performance.now();
+  const k = 42, d = 2 * Math.sqrt(k);
+  const step = (now) => {
+    const dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+    sv += (-k * sy - d * sv) * dt;
+    sy += sv * dt;
+    if (sy < 1 && Math.abs(sv) < 8) {
+      scrollTo(0, 0);
+      recalling = false;
+      return;
+    }
+    scrollTo(0, sy);
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+  return true;
+};
+window.__busy = () => recalling;
+
 function frame() {
   gl.clearColor(0, 0, 0, 1);
   gl.clear(gl.COLOR_BUFFER_BIT);
