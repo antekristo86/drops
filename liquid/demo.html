@@ -30,20 +30,20 @@ const paths = [
 "M693.287 193.646C693.287 168.149 698.283 145.88 708.275 126.838C718.59 107.474 732.772 92.6273 750.823 82.2996C769.195 71.649 790.147 66.3238 813.676 66.3238C837.529 66.3238 858.48 71.1649 876.53 80.8472C894.903 90.5295 909.247 104.246 919.561 121.997C930.198 139.748 935.678 160.565 936 184.448C936 190.903 935.516 197.519 934.549 204.297H747.922V207.201C749.211 228.825 755.98 245.93 768.228 258.517C780.477 271.104 796.754 277.398 817.061 277.398C833.177 277.398 846.715 273.686 857.674 266.263C868.633 258.517 875.886 247.706 879.431 233.828H931.648C927.136 259.002 914.887 279.657 894.903 295.794C875.241 311.931 850.583 320 820.929 320C795.143 320 772.58 314.836 753.24 304.508C734.223 293.858 719.396 279.012 708.759 259.97C698.444 240.928 693.287 218.82 693.287 193.646ZM882.816 166.051C880.56 147.978 873.307 133.938 861.059 123.933C849.133 113.606 833.983 108.442 815.61 108.442C798.527 108.442 783.7 113.767 771.129 124.418C758.881 134.745 751.79 148.623 749.856 166.051H882.816Z"
 ];
 
-function drawWordmark() {
+// a quiet, generous grid: nothing to read, everything to bend.
+// the liquid shows itself in what it does to straight lines
+function drawGrid() {
   ctx.clearRect(0, 0, TEX, TEX);
-  ctx.fillStyle = '#fff';
-  // logo viewBox is 370x128 — center it, ~55% of texture width
-  const w = TEX * 0.55;
-  const s = w / 936;
-  const h = 320 * s;
-  ctx.save();
-  ctx.translate((TEX - w) / 2, (TEX - h) / 2);
-  ctx.scale(s, s);
-  for (const d of paths) ctx.fill(new Path2D(d));
-  ctx.restore();
+  const step = TEX / 12;
+  ctx.strokeStyle = 'rgba(255,255,255,0.38)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  // interior lines only: an empty border keeps the clamped edge clean
+  for (let x = step; x < TEX - 1; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, TEX); }
+  for (let y = step; y < TEX - 1; y += step) { ctx.moveTo(0, y); ctx.lineTo(TEX, y); }
+  ctx.stroke();
 }
-drawWordmark();
+drawGrid();
 
 // --- GL setup ---
 const vsSrc = `
