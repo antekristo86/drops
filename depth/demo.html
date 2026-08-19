@@ -28,9 +28,10 @@
 <body>
 <div id="space"></div>
 <script>
-// depth scroll. cards on the z axis, ios feel:
-// direct follow while scrolling, momentum with friction on release,
-// a critically damped spring lands on the nearest card.
+// depth scroll. cards on the z axis, ios physics: direct follow while
+// scrolling, momentum with friction on release, the deceleration steered
+// onto the predicted card. velocity is continuous through the whole arc.
+// hitting an edge with speed bumps like a scroll view.
 const COUNT = 7;
 const GAP = 900;
 const MAXZ = (COUNT - 1) * GAP;
@@ -46,14 +47,41 @@ for (let i = 0; i < COUNT; i++) {
 }
 
 let camZ = 0, targetZ = 0, velZ = 0, lastInput = 0;
+let inertiaSlot = null;
+let bounce = false, bounceBound = 0;
 
-const P = { gain: 2.2, camLerp: 0.2, friction: 0.99, spring: 0.004, tilt: 0.135,
-            edgeOver: 0.1, edgeSpring: 0.16, edgeDamp: 0.55 };
+const P = {
+  gain: 4,            // wheel input gain
+  camLerp: 0.4,       // follow speed while actively scrolling
+  friction: 0.99,     // momentum decay per frame at speed
+  tailFriction: 0.88, // decay when nearly there. kills the crawl
+  steer: 0.3,         // how firmly the glide is steered onto the card
+  tilt: 0.13,         // velocity tilt amount
+  bumpK: 0.14,        // edge wall stiffness. depth of the bump comes from impact speed
+  bumpD: 0.16         // bump damping. one visible bounce, then done
+};
 
 function addInput(dy) {
-  const gain = P.gain / (1 + Math.abs(targetZ - camZ) / 700);
-  targetZ += dy * gain;
-  targetZ = Math.max(-GAP * P.edgeOver, Math.min(MAXZ + GAP * P.edgeOver, targetZ));
+  if (bounce) {
+    // momentum tail into the wall is swallowed. pulling away cancels
+    const towardWall = (bounceBound === 0 && dy < 0) || (bounceBound === MAXZ && dy > 0);
+    if (towardWall) return;
+    bounce = false;
+  }
+  // standing at the wall and flicking into it: the impact comes straight
+  // from the input speed. depth scales with how hard you hit
+  const atTop = camZ <= 2 && dy < 0;
+  const atBottom = camZ >= MAXZ - 2 && dy > 0;
+  if ((atTop || atBottom) && Math.abs(dy) > 18) {
+    bounce = true;
+    bounceBound = atTop ? 0 : MAXZ;
+    velZ = (atTop ? -1 : 1) * Math.min(Math.abs(dy) * 0.9, 55);
+    lastInput = 0;
+    return;
+  }
+  // full speed sensitivity. the predicted landing handles the rest
+  targetZ += dy * P.gain;
+  targetZ = Math.max(0, Math.min(MAXZ, targetZ));
   lastInput = performance.now();
 }
 
@@ -67,22 +95,62 @@ addEventListener('touchmove', e => {
 }, { passive: true });
 addEventListener('touchend', () => { touchY = null; });
 
+// programmatic jump: hand the landing slot straight to the deceleration,
+// bypassing the flick prediction
+function jumpTo(z) {
+  inertiaSlot = Math.max(0, Math.min(MAXZ, z));
+  targetZ = camZ;
+  lastInput = 0;
+}
+
+addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowRight') jumpTo(Math.round(camZ / GAP) * GAP + GAP);
+  if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') jumpTo(Math.round(camZ / GAP) * GAP - GAP);
+});
+
 function frame() {
+  // ios physics: while scrolling, direct follow. on release, momentum
+  // with friction, then a critically damped spring lands on the card.
+  // velocity is continuous through the whole arc
   const idle = performance.now() - lastInput;
   const prev = camZ;
 
-  if (idle < 80) {
+  if (bounce) {
+    // apple bump: the wall was hit with speed. penetration depth comes
+    // from the impact, the return starts immediately
+    velZ += (bounceBound - camZ) * P.bumpK - velZ * P.bumpD;
+    camZ += velZ;
+    targetZ = camZ;
+    if (Math.abs(camZ - bounceBound) < 0.4 && Math.abs(velZ) < 0.4) {
+      camZ = bounceBound; velZ = 0; targetZ = bounceBound;
+      bounce = false;
+    }
+  } else if (idle < 80) {
     camZ += (targetZ - camZ) * P.camLerp;
     velZ = camZ - prev;
+    inertiaSlot = null;
+    // impact: arriving at the wall with speed starts the bump
+    if (targetZ <= 0 && camZ < 50 && velZ < -2.5) { bounce = true; bounceBound = 0; }
+    if (targetZ >= MAXZ && camZ > MAXZ - 50 && velZ > 2.5) { bounce = true; bounceBound = MAXZ; }
   } else {
-    velZ *= P.friction;
-    const slot = Math.max(0, Math.min(MAXZ, Math.round(camZ / GAP) * GAP));
-    const settle = 1 - Math.min(Math.abs(velZ) / 26, 1);
-    const k = P.spring * settle;
-    velZ += (slot - camZ) * k - velZ * 2 * Math.sqrt(k);
+    // predict where the glide would end, pick that card, and steer the
+    // whole deceleration onto it. one continuous curve, no handoff, no pause
+    if (inertiaSlot === null) {
+      const pred = camZ + velZ * P.friction / (1 - P.friction);
+      inertiaSlot = Math.max(0, Math.min(MAXZ, Math.round(pred / GAP) * GAP));
+    }
+    // friction eases toward the tail value as speed dies, so the last
+    // millimeters finish decisively instead of crawling
+    const fe = P.tailFriction + (P.friction - P.tailFriction) * Math.min(Math.abs(velZ) / 8, 1);
+    const needed = (inertiaSlot - camZ) * (1 - fe) / fe;
+    velZ += (needed - velZ) * P.steer;
+    velZ *= fe;
     camZ += velZ;
-    if (camZ < 0)    { velZ += (0 - camZ) * P.edgeSpring - velZ * P.edgeDamp; camZ += velZ; }
-    if (camZ > MAXZ) { velZ += (MAXZ - camZ) * P.edgeSpring - velZ * P.edgeDamp; camZ += velZ; }
+    if (Math.abs(velZ) < 0.02 && Math.abs(inertiaSlot - camZ) < 0.5) { camZ = inertiaSlot; velZ = 0; }
+    if (camZ < 40 && velZ < -2.5) { bounce = true; bounceBound = 0; }
+    if (camZ > MAXZ - 40 && velZ > 2.5) { bounce = true; bounceBound = MAXZ; }
+    if (camZ < 0)    { camZ = 0; velZ = Math.max(0, velZ); }
+    if (camZ > MAXZ) { camZ = MAXZ; velZ = Math.min(0, velZ); }
     targetZ = camZ;
   }
 
@@ -92,7 +160,11 @@ function frame() {
     let op;
     if (tz > 0) op = Math.max(0, 1 - tz / (GAP * 0.45));
     else op = Math.max(0, 1 - (-tz) / (GAP * 2.6));
-    el.style.transform = `translate(-50%, -50%) translateZ(${tz}px) rotateX(${tilt}deg)`;
+    // at rest: no 3d layer, so the type stays crisp
+    const settled = Math.abs(tz) < 0.5 && Math.abs(velZ) < 0.05;
+    el.style.transform = settled
+      ? 'translate(-50%, -50%)'
+      : `translate(-50%, -50%) translateZ(${tz}px) rotateX(${tilt}deg)`;
     el.style.opacity = op.toFixed(3);
     el.style.visibility = op <= 0 ? 'hidden' : 'visible';
   });
