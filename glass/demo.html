@@ -650,7 +650,6 @@ addEventListener('pointerup', e => {
   dYv += 1.5;
   dXv += 0.7;
   const mx = e.clientX / innerWidth, my = 1 - e.clientY / innerHeight;
-  scaleT = overLens(mx, my) ? 1.12 : 1;
   // a click, not a drag: the row separates, or comes home
   if (Math.hypot(mx - downMx, my - downMy) < 0.012) {
     dropOn = !dropOn;
