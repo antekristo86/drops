@@ -11,7 +11,7 @@ the scroll and the layout. No libraries.
 ## Use
 
 ```
-npx degit antekristo86/drops/pixel pixel
+npx degit antekristo86/lab/pixel pixel
 open pixel/demo.html
 ```
 

@@ -18,7 +18,7 @@ No textures, no sprites, no libraries. One shader, one file.
 ## Use
 
 ```
-npx degit antekristo86/drops/glass glass
+npx degit antekristo86/lab/glass glass
 open glass/demo.html
 ```
 
