@@ -51,9 +51,9 @@ const els = LINES.map(t => {
   return d;
 });
 
-// centre-aligned text resolves from its edges toward the centre
-function posOf(i, len) {
-  return 1 - Math.abs((i + 0.5) / len - 0.5) * 2;
+// in reads left to right, out reads right to left
+function posOf(i, len, mode) {
+  return mode > 0 ? i / len : (len - 1 - i) / len;
 }
 
 // one renderer for both directions: mode +1 reveals with q, -1 dissolves
@@ -68,7 +68,7 @@ function render(el, text, q, mode) {
   for (let i = 0; i < len; i++) {
     const c = text[i];
     if (c === ' ') { out += ' '; continue; }
-    const f = posOf(i, len);
+    const f = posOf(i, len, mode);
     if (mode > 0) {
       if (f < front - band) out += c;
       else if (f >= front) out += NB;
