@@ -6,6 +6,8 @@
 <title>depth scroll</title>
 <style>
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: crosshair; }
+  body.light { background: #000050; }
+  body.light .plate { background-color: #000050; }
   body { font-family: ui-monospace, monospace; }
   #space {
     position: fixed; inset: 0;
@@ -132,6 +134,16 @@ addEventListener('keydown', e => {
   if (e.key === 'ArrowDown' || e.key === 'ArrowRight') jumpTo(Math.round(camZ / GAP) * GAP + GAP);
   if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') jumpTo(Math.round(camZ / GAP) * GAP - GAP);
 });
+
+
+// ---- theme: the host's light/dark reaches into the drop ----
+const ANTE_THEMES = { dark: { bg: '#000000', fg: '#ffffff' }, light: { bg: '#000050', fg: '#FFFF00' } };
+let anteTheme = 'dark';
+try { if (localStorage.getItem('anteTheme') === 'light') anteTheme = 'light'; } catch (e) {}
+
+function applyAnteTheme() { document.body.classList.toggle('light', anteTheme === 'light'); }
+addEventListener('message', e => { if (e.data && e.data.anteTheme) { anteTheme = e.data.anteTheme; applyAnteTheme(); } });
+applyAnteTheme();
 
 function frame() {
   // ios physics: while scrolling, direct follow. on release, momentum

@@ -6,6 +6,7 @@
 <title>pixel scroll</title>
 <style>
   html, body { margin: 0; background: #000; cursor: crosshair; }
+  body.light { background: #000050; }
   html { overflow-x: hidden; }
   /* the placeholders only make the page tall and mark where the images
      live. the pixels themselves come from the one canvas on top */
@@ -190,8 +191,22 @@ window.__recall = () => {
 };
 window.__busy = () => recalling;
 
+
+// ---- theme: the host's light/dark reaches into the drop ----
+const ANTE_THEMES = { dark: { bg: '#000000', fg: '#ffffff' }, light: { bg: '#000050', fg: '#FFFF00' } };
+let anteTheme = 'dark';
+try { if (localStorage.getItem('anteTheme') === 'light') anteTheme = 'light'; } catch (e) {}
+
+let anteClr = anteTheme === 'light' ? [0, 0, 0.3137] : [0, 0, 0];
+function applyAnteTheme() {
+  anteClr = anteTheme === 'light' ? [0, 0, 0.3137] : [0, 0, 0];
+  document.body.classList.toggle('light', anteTheme === 'light');
+}
+addEventListener('message', e => { if (e.data && e.data.anteTheme) { anteTheme = e.data.anteTheme; applyAnteTheme(); } });
+applyAnteTheme();
+
 function frame() {
-  gl.clearColor(0, 0, 0, 1);
+  gl.clearColor(anteClr[0], anteClr[1], anteClr[2], 1);
   gl.clear(gl.COLOR_BUFFER_BIT);
   gl.uniform2f(uView, innerWidth, innerHeight);
   gl.uniform1f(uViewH, innerHeight);

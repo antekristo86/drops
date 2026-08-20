@@ -46,9 +46,15 @@ const JELLY = [
 "M466.776 139.16V85.064L418.364 0H451.292L481.672 56.056L511.856 0H544.784L496.568 85.064V139.16H466.776Z"
 ];
 
+
+// ---- theme: the host's light/dark reaches into the drop ----
+const ANTE_THEMES = { dark: { bg: '#000000', fg: '#ffffff' }, light: { bg: '#000050', fg: '#FFFF00' } };
+let anteTheme = 'dark';
+try { if (localStorage.getItem('anteTheme') === 'light') anteTheme = 'light'; } catch (e) {}
+
 function drawBackground() {
   const w = tex2d.width, h = tex2d.height;
-  ctx.fillStyle = '#000';
+  ctx.fillStyle = ANTE_THEMES[anteTheme].bg;
   ctx.fillRect(0, 0, w, h);
   const logoW = Math.min(w * 0.30, h * 0.95);
   const sc = logoW / 545;
@@ -56,7 +62,7 @@ function drawBackground() {
   ctx.save();
   ctx.translate((w - logoW) / 2, h / 2 - logoH * 0.02);
   ctx.scale(sc, sc);
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = ANTE_THEMES[anteTheme].fg;
   for (const d of JELLY) ctx.fill(new Path2D(d));
   ctx.restore();
 }
@@ -834,6 +840,15 @@ function deformNow() {
   const uy = Math.max(-0.30, Math.min(0.35, dY + sy - sx * 0.6));
   return [ux, uy];
 }
+
+addEventListener('message', e => {
+  if (e.data && e.data.anteTheme) {
+    anteTheme = e.data.anteTheme;
+    drawBackground();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, tex2d);
+  }
+});
 
 function resize() {
   dpr = Math.min(devicePixelRatio, 2);
