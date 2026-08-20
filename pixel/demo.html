@@ -6,7 +6,7 @@
 <title>pixel scroll</title>
 <style>
   html, body { margin: 0; background: #000; cursor: crosshair; }
-  body.light { background: #000050; }
+  html.light, html.light body { background: #000050; }
   html { overflow-x: hidden; }
   /* the placeholders only make the page tall and mark where the images
      live. the pixels themselves come from the one canvas on top */
@@ -200,7 +200,7 @@ try { if (localStorage.getItem('anteTheme') === 'light') anteTheme = 'light'; } 
 let anteClr = anteTheme === 'light' ? [0, 0, 0.3137] : [0, 0, 0];
 function applyAnteTheme() {
   anteClr = anteTheme === 'light' ? [0, 0, 0.3137] : [0, 0, 0];
-  document.body.classList.toggle('light', anteTheme === 'light');
+  document.documentElement.classList.toggle('light', anteTheme === 'light');
 }
 addEventListener('message', e => { if (e.data && e.data.anteTheme) { anteTheme = e.data.anteTheme; applyAnteTheme(); } });
 applyAnteTheme();

@@ -6,8 +6,8 @@
 <title>depth scroll</title>
 <style>
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: crosshair; }
-  body.light { background: #000050; }
-  body.light .plate { background-color: #000050; }
+  html.light, html.light body { background: #000050; }
+  html.light .plate { background-color: #000050; }
   body { font-family: ui-monospace, monospace; }
   #space {
     position: fixed; inset: 0;
@@ -141,7 +141,7 @@ const ANTE_THEMES = { dark: { bg: '#000000', fg: '#ffffff' }, light: { bg: '#000
 let anteTheme = 'dark';
 try { if (localStorage.getItem('anteTheme') === 'light') anteTheme = 'light'; } catch (e) {}
 
-function applyAnteTheme() { document.body.classList.toggle('light', anteTheme === 'light'); }
+function applyAnteTheme() { document.documentElement.classList.toggle('light', anteTheme === 'light'); }
 addEventListener('message', e => { if (e.data && e.data.anteTheme) { anteTheme = e.data.anteTheme; applyAnteTheme(); } });
 applyAnteTheme();
 
