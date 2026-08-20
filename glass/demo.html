@@ -570,9 +570,6 @@ let neck = 0.05;
 let scale = 1, scaleT = 1, scaleV = 0;
 // the aurora breathes in on hover instead of switching on
 let hov = 0, hovT = 0, hovV = 0;
-// no hover on touch: the aurora idles ambient and blooms on tap-hold
-const TOUCH = matchMedia('(hover: none)').matches;
-let movedSinceDown = false;
 let dragging = false, grabX = 0, grabY = 0;
 
 // sized off the height. on portrait the whole body scales down to the
@@ -609,12 +606,7 @@ function overLens(mx, my) {
 
 addEventListener('pointermove', e => {
   const mx = e.clientX / innerWidth, my = 1 - e.clientY / innerHeight;
-  if (dragging) {
-    tx = mx - grabX; ty = my - grabY;
-    if (Math.hypot(mx - downMx, my - downMy) > 0.012) movedSinceDown = true;
-    return;
-  }
-  if (TOUCH) return;   // synthetic moves must not fake a hover
+  if (dragging) { tx = mx - grabX; ty = my - grabY; return; }
   const inside = overLens(mx, my);
   // the kick carries the swell, the rest point only settles it. without
   // the kick the spring ramps and hover feels heavy next to the rest of
@@ -643,7 +635,6 @@ canvas.addEventListener('pointerdown', e => {
   }
   if (!overLens(mx, my)) return;
   dragging = true;
-  movedSinceDown = false;
   grabX = mx - lx;
   grabY = my - ly;
   tx = lx; ty = ly;
@@ -867,11 +858,8 @@ function frame(t) {
 
   scaleV += (scaleT - scale) * 0.045 - scaleV * 0.26;
   scale += scaleV;
-  // grabbing kills the glow: hover is an invitation, holding is holding.
-  // on touch the aurora idles ambient and a still hold blooms it fully
-  const held = TOUCH && dragging && !movedSinceDown;
-  const base = TOUCH ? 0.5 : 0;
-  const ht = (dragging && !held) ? 0 : Math.max(base, held ? 1 : hovT);
+  // grabbing kills the glow: hover is an invitation, holding is holding
+  const ht = dragging ? 0 : hovT;
   hovV += (ht - hov) * 0.030 - hovV * 0.24;
   hov += hovV;
   gl.uniform1f(uHover, Math.max(0, hov));
