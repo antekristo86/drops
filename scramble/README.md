@@ -1,11 +1,20 @@
-# scramble
+# scramble scroll
 
-Text transition. Characters flick through noise and resolve left to right.
+Text resolves out of flickering glyphs on the way into the viewport and
+dissolves back into them on the way out. A directional front sweeps each
+line: ahead the original, at the front a scrambling glyph, behind it
+nothing. Fully reversible, the scroll position is the only clock.
 
-Vanilla JS, ~30 lines. No dependencies. Works with any font, built for bitmap type.
+Glyphs keep their slot via non-breaking spaces, so nothing ever reflows.
+No libraries.
 
-## use
+## Use
 
-Open `demo.html`. Put your words in `WORDS`, your glyph pool in `CHARS`. `DURATION` is the resolve time in ms.
+```
+npx degit antekristo86/lab/scramble scramble
+open scramble/demo.html
+```
+
+Swap the lines in `LINES`.
 
 Made with Claude Code.
