@@ -51,9 +51,10 @@ const els = LINES.map(t => {
   return d;
 });
 
-// in reads left to right, out reads right to left
+// both directions read left to right: the first letter arrives first
+// and leaves first
 function posOf(i, len, mode) {
-  return mode > 0 ? i / len : (len - 1 - i) / len;
+  return i / len;
 }
 
 // one renderer for both directions: mode +1 reveals with q, -1 dissolves
