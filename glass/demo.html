@@ -949,7 +949,8 @@ document.getElementById('reset').addEventListener('click', () => {
   }
 });
 addEventListener('keydown', e => {
-  if (e.key === 'd' || e.key === 'D') panel.classList.toggle('on');
+  const tuneOk = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if (tuneOk && (e.key === 'd' || e.key === 'D')) panel.classList.toggle('on');
 });
 
 // for hosts embedding this demo: is there glass under this uv point?
