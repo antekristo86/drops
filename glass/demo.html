@@ -90,6 +90,7 @@ uniform float uSplay;                     // how sharply the rim flares
 // this piece specifically
 uniform float uShapeW, uShapeH, uSmoke, uSmokePos;
 uniform float uShadow;
+uniform float uShadowUp; // 1 = the cast may not reach above the body
 // the aurora: how bright, how fast it drifts, how tall the rays stand
 uniform float uAurora, uAuroraSpeed, uAuroraRay;
 uniform float uHover;    // springed 0..1, the aurora breathes in on hover
@@ -341,6 +342,9 @@ void main() {
   // density. an exponential falloff keeps it from reading as a cloud
   float dCast = scene(q - vec2(0.0, -0.22 * uR), c, uR) / gm;
   float veil = exp(-max(dCast, 0.0) * 11.0) * outside;
+  // smooth directional fade: full below the body, gone above it,
+  // hermite in between so no crease prints into the veil
+  veil *= mix(1.0, 1.0 - smoothstep(-0.15 * uR, 0.45 * uR, q.y - c.y), uShadowUp);
   col *= 1.0 - veil * uShadow;
 
   // the rim is not a stroke. it is the lit edge of a body with thickness:
@@ -540,6 +544,7 @@ const uDeform = gl.getUniformLocation(prog, 'uDeform');
 const uDrops = gl.getUniformLocation(prog, 'uDrops');
 const uDropRs = gl.getUniformLocation(prog, 'uDropRs');
 const uNeckU = gl.getUniformLocation(prog, 'uNeck');
+const uShadowUpLoc = gl.getUniformLocation(prog, 'uShadowUp');
 const uHover = gl.getUniformLocation(prog, 'uHover');
 const uDropHov = gl.getUniformLocation(prog, 'uDropHov');
 
@@ -881,6 +886,12 @@ function frame(t) {
   gl.uniform1fv(uDropHov, drops.map(D => Math.max(0, D.hv)));
   gl.uniform1f(uScale, scale);
   for (const k in DEFAULTS) gl.uniform1f(U[k], P[k]);
+  // the blue room: quieter shadow, none of it above the body, thinner smoke
+  gl.uniform1f(uShadowUpLoc, anteTheme === 'light' ? 1.0 : 0.0);
+  if (anteTheme === 'light') {
+    gl.uniform1f(U.shadow, P.shadow * 0.4);
+    gl.uniform1f(U.smoke, 0.3);
+  }
   // the artwork drifts slowly, so its light-to-dark edge crosses the lens
   const T = t * 0.001;
   gl.uniform2f(uPan, 0.0, 0.0);
